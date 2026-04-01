@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # ─── Postgres for Keycloak ───────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: hmeet-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Postgres for Users Service ──────────────────────────────────────────────
+  users-db:
+    image: postgres:16-alpine
+    container_name: hmeet-users-db
+    environment:
+      POSTGRES_DB: hmeet_users
+      POSTGRES_USER: hmeet_users
+      POSTGRES_PASSWORD: hmeet_users_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - users_db_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmeet_users"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Postgres for Chat Service ───────────────────────────────────────────────
+  chat-db:
+    image: postgres:16-alpine
+    container_name: hmeet-chat-db
+    environment:
+      POSTGRES_DB: hmeet_chat
+      POSTGRES_USER: hmeet_chat
+      POSTGRES_PASSWORD: hmeet_chat_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - chat_db_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmeet_chat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Keycloak ─────────────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: hmeet-keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+    command:
+      - start-dev
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /health/ready HTTP/1.1\r\nhost: 127.0.0.1:8080\r\nConnection: close\r\n\r\n\" >&3;grep \"HTTP/1.1 200 OK\" <&3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── Zookeeper (required by Kafka) ───────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: hmeet-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc 127.0.0.1 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Kafka ────────────────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: hmeet-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "29092:29092"  # External (host machine)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─── Kafka UI (optional, handy for dev) ──────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: hmeet-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: hmeet
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    networks:
+      - hmeet-network
+
+volumes:
+  postgres_data:
+    driver: local
+  users_db_data:
+    driver: local
+  chat_db_data:
+    driver: local
+
+networks:
+  hmeet-network:
+    driver: bridge
