@@ -1,10 +1,10 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { ChatAppModule } from './app.module';
+import { NestFactory } from "@nestjs/core";
+import { ValidationPipe, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { ChatAppModule } from "./app.module";
 
 async function bootstrap() {
-  const logger = new Logger('ChatService');
+  const logger = new Logger("ChatService");
   const app = await NestFactory.create(ChatAppModule);
 
   const configService = app.get(ConfigService);
@@ -17,11 +17,11 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix("api");
 
-  app.enableCors({ origin: '*', credentials: true });
+  app.enableCors({ origin: "*", credentials: true });
 
-  const port = configService.get<number>('port') ?? 3002;
+  const port = configService.get<number>("port") ?? 3002;
   await app.listen(port);
 
   logger.log(`🚀 Chat Service running on: http://localhost:${port}/api`);

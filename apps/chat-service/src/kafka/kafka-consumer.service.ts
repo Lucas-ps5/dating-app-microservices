@@ -1,7 +1,12 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Kafka, Consumer, EachMessagePayload } from 'kafkajs';
-import { KAFKA_TOPICS } from '@app/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Kafka, Consumer, EachMessagePayload } from "kafkajs";
+import { KAFKA_TOPICS } from "@app/common";
 
 @Injectable()
 export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
@@ -10,9 +15,12 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   private consumer: Consumer;
 
   constructor(private readonly configService: ConfigService) {
-    const brokers = this.configService.get<string[]>('kafka.brokers') ?? ['localhost:29092'];
-    const groupId = this.configService.get<string>('kafka.groupId') ?? 'chat-service';
-    this.kafka = new Kafka({ clientId: 'chat-service-consumer', brokers });
+    const brokers = this.configService.get<string[]>("kafka.brokers") ?? [
+      "localhost:29092",
+    ];
+    const groupId =
+      this.configService.get<string>("kafka.groupId") ?? "chat-service";
+    this.kafka = new Kafka({ clientId: "chat-service-consumer", brokers });
     this.consumer = this.kafka.consumer({ groupId });
   }
 
@@ -28,9 +36,11 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
           await this.handleMessage(payload);
         },
       });
-      this.logger.log('Kafka consumer connected and listening');
+      this.logger.log("Kafka consumer connected and listening");
     } catch (err) {
-      this.logger.warn(`Kafka consumer failed to connect: ${err.message}. Continuing without Kafka.`);
+      this.logger.warn(
+        `Kafka consumer failed to connect: ${err.message}. Continuing without Kafka.`,
+      );
     }
   }
 
@@ -57,7 +67,9 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`No handler for topic: ${topic}`);
       }
     } catch (err) {
-      this.logger.error(`Error handling message on topic "${topic}": ${err.message}`);
+      this.logger.error(
+        `Error handling message on topic "${topic}": ${err.message}`,
+      );
     }
   }
 }

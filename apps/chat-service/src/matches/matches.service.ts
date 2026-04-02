@@ -3,12 +3,12 @@ import {
   NotFoundException,
   ConflictException,
   Logger,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Match } from './match.entity';
-import { KafkaProducerService } from '../kafka/kafka-producer.service';
-import { KAFKA_TOPICS } from '@app/common';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Match } from "./match.entity";
+import { KafkaProducerService } from "../kafka/kafka-producer.service";
+import { KAFKA_TOPICS } from "@app/common";
 
 @Injectable()
 export class MatchesService {
@@ -28,7 +28,7 @@ export class MatchesService {
       where: { user1Id: uid1, user2Id: uid2 },
     });
     if (existing) {
-      throw new ConflictException('Match already exists');
+      throw new ConflictException("Match already exists");
     }
 
     const match = this.matchesRepo.create({ user1Id: uid1, user2Id: uid2 });
@@ -47,10 +47,10 @@ export class MatchesService {
 
   async findMatchesForUser(userId: string): Promise<Match[]> {
     return this.matchesRepo
-      .createQueryBuilder('match')
-      .where('(match.user1Id = :userId OR match.user2Id = :userId)', { userId })
-      .andWhere('match.isActive = true')
-      .orderBy('match.matchedAt', 'DESC')
+      .createQueryBuilder("match")
+      .where("(match.user1Id = :userId OR match.user2Id = :userId)", { userId })
+      .andWhere("match.isActive = true")
+      .orderBy("match.matchedAt", "DESC")
       .getMany();
   }
 
@@ -63,7 +63,7 @@ export class MatchesService {
   async validateParticipant(matchId: string, userId: string): Promise<Match> {
     const match = await this.findMatchById(matchId);
     if (match.user1Id !== userId && match.user2Id !== userId) {
-      throw new NotFoundException('You are not a participant of this match');
+      throw new NotFoundException("You are not a participant of this match");
     }
     return match;
   }

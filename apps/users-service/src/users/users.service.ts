@@ -3,13 +3,13 @@ import {
   NotFoundException,
   ConflictException,
   Logger,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
-import { User } from './user.entity';
-import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from './dto/user.dto';
-import { KafkaProducerService } from '../kafka/kafka-producer.service';
-import { KAFKA_TOPICS } from '@app/common';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, Not } from "typeorm";
+import { User } from "./user.entity";
+import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
+import { KafkaProducerService } from "../kafka/kafka-producer.service";
+import { KAFKA_TOPICS } from "@app/common";
 
 @Injectable()
 export class UsersService {
@@ -86,28 +86,37 @@ export class UsersService {
     return this.usersRepo.save(user);
   }
 
-  async discover(query: DiscoverQueryDto): Promise<{ data: User[]; total: number }> {
-    const { currentUserId, gender, ageMin, ageMax, page = 1, limit = 20 } = query;
+  async discover(
+    query: DiscoverQueryDto,
+  ): Promise<{ data: User[]; total: number }> {
+    const {
+      currentUserId,
+      gender,
+      ageMin,
+      ageMax,
+      page = 1,
+      limit = 20,
+    } = query;
 
     const qb = this.usersRepo
-      .createQueryBuilder('user')
-      .where('user.isActive = :isActive', { isActive: true });
+      .createQueryBuilder("user")
+      .where("user.isActive = :isActive", { isActive: true });
 
     if (currentUserId) {
-      qb.andWhere('user.keycloakId != :currentUserId', { currentUserId });
+      qb.andWhere("user.keycloakId != :currentUserId", { currentUserId });
     }
     if (gender) {
-      qb.andWhere('user.gender = :gender', { gender });
+      qb.andWhere("user.gender = :gender", { gender });
     }
     if (ageMin) {
       const maxBirthdate = new Date();
       maxBirthdate.setFullYear(maxBirthdate.getFullYear() - ageMin);
-      qb.andWhere('user.birthdate <= :maxBirthdate', { maxBirthdate });
+      qb.andWhere("user.birthdate <= :maxBirthdate", { maxBirthdate });
     }
     if (ageMax) {
       const minBirthdate = new Date();
       minBirthdate.setFullYear(minBirthdate.getFullYear() - ageMax);
-      qb.andWhere('user.birthdate >= :minBirthdate', { minBirthdate });
+      qb.andWhere("user.birthdate >= :minBirthdate", { minBirthdate });
     }
 
     const total = await qb.getCount();

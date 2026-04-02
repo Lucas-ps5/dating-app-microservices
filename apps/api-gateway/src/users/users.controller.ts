@@ -14,107 +14,107 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiConsumes,
   ApiBody,
-} from '@nestjs/swagger';
-import { Request } from 'express';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { AuthenticatedUser } from '../auth/interfaces/user.interface';
-import { UsersProxyService } from './users-proxy.service';
+} from "@nestjs/swagger";
+import { Request } from "express";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
+import { UsersProxyService } from "./users-proxy.service";
 
-@ApiTags('users')
+@ApiTags("users")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('users')
+@Controller("users")
 export class UsersController {
   private readonly logger = new Logger(UsersController.name);
 
   constructor(private readonly usersProxy: UsersProxyService) {}
 
-  @Post('profile')
-  @ApiOperation({ summary: 'Create or update my profile' })
+  @Post("profile")
+  @ApiOperation({ summary: "Create or update my profile" })
   async createProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: Record<string, unknown>,
   ) {
-    const res = await this.usersProxy.forward('post', '/profile', {
+    const res = await this.usersProxy.forward("post", "/profile", {
       body: { ...body, keycloakId: user.userId, email: user.email },
       user,
     });
     return res.data;
   }
 
-  @Get('profile')
-  @ApiOperation({ summary: 'Get my profile' })
+  @Get("profile")
+  @ApiOperation({ summary: "Get my profile" })
   async getMyProfile(@CurrentUser() user: AuthenticatedUser) {
     const res = await this.usersProxy.forward(
-      'get',
+      "get",
       `/by-keycloak/${user.userId}`,
       { user },
     );
     return res.data;
   }
 
-  @Get('discover')
-  @ApiOperation({ summary: 'Discover potential matches' })
+  @Get("discover")
+  @ApiOperation({ summary: "Discover potential matches" })
   async discover(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: Record<string, string>,
   ) {
-    const res = await this.usersProxy.forward('get', '/discover', {
+    const res = await this.usersProxy.forward("get", "/discover", {
       user,
       params: { ...query, currentUserId: user.userId },
     });
     return res.data;
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get user profile by ID' })
+  @Get(":id")
+  @ApiOperation({ summary: "Get user profile by ID" })
   async getUserById(
-    @Param('id') id: string,
+    @Param("id") id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const res = await this.usersProxy.forward('get', `/${id}`, { user });
+    const res = await this.usersProxy.forward("get", `/${id}`, { user });
     return res.data;
   }
 
-  @Patch('profile')
-  @ApiOperation({ summary: 'Update my profile' })
+  @Patch("profile")
+  @ApiOperation({ summary: "Update my profile" })
   async updateProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: Record<string, unknown>,
   ) {
     const res = await this.usersProxy.forward(
-      'patch',
+      "patch",
       `/by-keycloak/${user.userId}`,
       { body, user },
     );
     return res.data;
   }
 
-  @Post('me/photos')
-  @UseInterceptors(FileInterceptor('photo'))
-  @ApiConsumes('multipart/form-data')
+  @Post("me/photos")
+  @UseInterceptors(FileInterceptor("photo"))
+  @ApiConsumes("multipart/form-data")
   @ApiBody({
     schema: {
-      type: 'object',
-      properties: { photo: { type: 'string', format: 'binary' } },
+      type: "object",
+      properties: { photo: { type: "string", format: "binary" } },
     },
   })
-  @ApiOperation({ summary: 'Upload a profile photo' })
+  @ApiOperation({ summary: "Upload a profile photo" })
   async uploadPhoto(
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,
   ) {
     const res = await this.usersProxy.forward(
-      'post',
+      "post",
       `/by-keycloak/${user.userId}/photos`,
       {
         body: {
@@ -128,14 +128,14 @@ export class UsersController {
     return res.data;
   }
 
-  @Delete(':id')
+  @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a user (admin)' })
+  @ApiOperation({ summary: "Delete a user (admin)" })
   async deleteUser(
-    @Param('id') id: string,
+    @Param("id") id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const res = await this.usersProxy.forward('delete', `/${id}`, { user });
+    const res = await this.usersProxy.forward("delete", `/${id}`, { user });
     return res.data;
   }
 }

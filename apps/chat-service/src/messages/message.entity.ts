@@ -4,17 +4,17 @@ import {
   Column,
   CreateDateColumn,
   Index,
-} from 'typeorm';
+} from "typeorm";
 
 export enum MessageType {
-  TEXT = 'text',
-  IMAGE = 'image',
-  GIF = 'gif',
+  TEXT = "text",
+  IMAGE = "image",
+  GIF = "gif",
 }
 
-@Entity('messages')
+@Entity("messages")
 export class Message {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn("uuid")
   id: string;
 
   @Column()
@@ -24,11 +24,11 @@ export class Message {
   @Column()
   senderId: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: "text" })
   content: string;
 
   @Column({
-    type: 'enum',
+    type: "enum",
     enum: MessageType,
     default: MessageType.TEXT,
   })
@@ -37,6 +37,6 @@ export class Message {
   @CreateDateColumn()
   sentAt: Date;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: "timestamptz", nullable: true })
   readAt: Date | null;
 }

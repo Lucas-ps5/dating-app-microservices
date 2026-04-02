@@ -1,10 +1,10 @@
 // Kafka Topic constants
 export const KAFKA_TOPICS = {
-  USER_CREATED: 'user.created',
-  USER_UPDATED: 'user.updated',
-  USER_DELETED: 'user.deleted',
-  MATCH_CREATED: 'match.created',
-  MESSAGE_SENT: 'message.sent',
+  USER_CREATED: "user.created",
+  USER_UPDATED: "user.updated",
+  USER_DELETED: "user.deleted",
+  MATCH_CREATED: "match.created",
+  MESSAGE_SENT: "message.sent",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];

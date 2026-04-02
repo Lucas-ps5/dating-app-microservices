@@ -5,12 +5,12 @@ import {
   CreateDateColumn,
   Index,
   Unique,
-} from 'typeorm';
+} from "typeorm";
 
-@Entity('matches')
-@Unique(['user1Id', 'user2Id'])
+@Entity("matches")
+@Unique(["user1Id", "user2Id"])
 export class Match {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn("uuid")
   id: string;
 
   @Column()

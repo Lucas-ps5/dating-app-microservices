@@ -6,12 +6,12 @@ import {
   OnGatewayDisconnect,
   MessageBody,
   ConnectedSocket,
-} from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
-import { Server, Socket } from 'socket.io';
-import { MessagesService } from '../messages/messages.service';
-import { MatchesService } from '../matches/matches.service';
-import { MessageType } from '../messages/message.entity';
+} from "@nestjs/websockets";
+import { Logger } from "@nestjs/common";
+import { Server, Socket } from "socket.io";
+import { MessagesService } from "../messages/messages.service";
+import { MatchesService } from "../matches/matches.service";
+import { MessageType } from "../messages/message.entity";
 
 interface SendMessagePayload {
   matchId: string;
@@ -20,8 +20,8 @@ interface SendMessagePayload {
 }
 
 @WebSocketGateway({
-  cors: { origin: '*', credentials: true },
-  namespace: '/chat',
+  cors: { origin: "*", credentials: true },
+  namespace: "/chat",
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -39,7 +39,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleConnection(client: Socket) {
     const userId = client.handshake.auth?.userId as string | undefined;
     if (!userId) {
-      this.logger.warn(`Client ${client.id} connected without userId — disconnecting`);
+      this.logger.warn(
+        `Client ${client.id} connected without userId — disconnecting`,
+      );
       client.disconnect();
       return;
     }
@@ -52,34 +54,34 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  @SubscribeMessage('join-match')
+  @SubscribeMessage("join-match")
   async handleJoinMatch(
     @ConnectedSocket() client: Socket,
     @MessageBody() matchId: string,
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) {
-      client.emit('error', { message: 'Unauthorised' });
+      client.emit("error", { message: "Unauthorised" });
       return;
     }
     try {
       await this.matchesService.validateParticipant(matchId, userId);
       await client.join(`match:${matchId}`);
       this.logger.debug(`${userId} joined room match:${matchId}`);
-      client.emit('joined', { matchId });
+      client.emit("joined", { matchId });
     } catch {
-      client.emit('error', { message: 'Cannot join this match' });
+      client.emit("error", { message: "Cannot join this match" });
     }
   }
 
-  @SubscribeMessage('message')
+  @SubscribeMessage("message")
   async handleMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: SendMessagePayload,
   ) {
     const senderId = this.connectedUsers.get(client.id);
     if (!senderId) {
-      client.emit('error', { message: 'Unauthorised' });
+      client.emit("error", { message: "Unauthorised" });
       return;
     }
 
@@ -94,19 +96,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
 
       // Broadcast to everyone in the match room
-      this.server.to(`match:${payload.matchId}`).emit('new-message', message);
+      this.server.to(`match:${payload.matchId}`).emit("new-message", message);
     } catch (err) {
-      client.emit('error', { message: err.message });
+      client.emit("error", { message: err.message });
     }
   }
 
-  @SubscribeMessage('typing')
+  @SubscribeMessage("typing")
   handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() matchId: string,
   ) {
     const userId = this.connectedUsers.get(client.id);
     if (!userId) return;
-    client.to(`match:${matchId}`).emit('typing', { userId, matchId });
+    client.to(`match:${matchId}`).emit("typing", { userId, matchId });
   }
 }

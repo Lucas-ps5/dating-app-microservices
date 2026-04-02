@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { Injectable, Logger } from "@nestjs/common";
+import { HttpService } from "@nestjs/axios";
+import { ConfigService } from "@nestjs/config";
+import { firstValueFrom } from "rxjs";
+import type { AxiosRequestConfig, AxiosResponse } from "axios";
 
 @Injectable()
 export class HttpProxyService {
@@ -14,7 +14,7 @@ export class HttpProxyService {
   ) {}
 
   async proxy<T>(
-    method: 'get' | 'post' | 'put' | 'patch' | 'delete',
+    method: "get" | "post" | "put" | "patch" | "delete",
     serviceUrl: string,
     path: string,
     options: {
@@ -33,21 +33,21 @@ export class HttpProxyService {
 
     try {
       switch (method) {
-        case 'get':
+        case "get":
           return await firstValueFrom(this.httpService.get<T>(url, config));
-        case 'post':
+        case "post":
           return await firstValueFrom(
             this.httpService.post<T>(url, options.body, config),
           );
-        case 'put':
+        case "put":
           return await firstValueFrom(
             this.httpService.put<T>(url, options.body, config),
           );
-        case 'patch':
+        case "patch":
           return await firstValueFrom(
             this.httpService.patch<T>(url, options.body, config),
           );
-        case 'delete':
+        case "delete":
           return await firstValueFrom(this.httpService.delete<T>(url, config));
       }
     } catch (error) {

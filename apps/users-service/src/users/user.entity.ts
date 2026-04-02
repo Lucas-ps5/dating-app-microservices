@@ -5,11 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-} from 'typeorm';
+} from "typeorm";
 
-@Entity('users')
+@Entity("users")
 export class User {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn("uuid")
   id: string;
 
   @Column({ unique: true })
@@ -25,17 +25,17 @@ export class User {
   @Column({ nullable: true, length: 500 })
   bio: string;
 
-  @Column({ type: 'date', nullable: true })
+  @Column({ type: "date", nullable: true })
   birthdate: Date;
 
   @Column({ nullable: true })
   gender: string;
 
   // Location
-  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  @Column({ type: "decimal", precision: 10, scale: 7, nullable: true })
   latitude: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  @Column({ type: "decimal", precision: 10, scale: 7, nullable: true })
   longitude: number;
 
   @Column({ nullable: true })
@@ -45,11 +45,11 @@ export class User {
   country: string;
 
   // Photos (array of filenames/URLs)
-  @Column('text', { array: true, default: () => "'{}'" })
+  @Column("text", { array: true, default: () => "'{}'" })
   photos: string[];
 
   // Dating preferences
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: "jsonb", nullable: true })
   preferences: {
     ageMin?: number;
     ageMax?: number;
