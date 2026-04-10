@@ -7,16 +7,10 @@ import {
   Body,
   Param,
   Query,
-  Headers,
-  UseInterceptors,
-  UploadedFile,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
-import { diskStorage } from "multer";
-import { extname } from "path";
-import { v4 as uuidv4 } from "uuid";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
@@ -62,32 +56,18 @@ export class UsersController {
   }
 
   @Post("by-keycloak/:keycloakId/photos")
-  @UseInterceptors(
-    FileInterceptor("photo", {
-      storage: diskStorage({
-        destination: "./uploads/photos",
-        filename: (_req, file, cb) => {
-          cb(null, `${uuidv4()}${extname(file.originalname)}`);
-        },
-      }),
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-      fileFilter: (_req, file, cb) => {
-        if (file.mimetype.startsWith("image/")) {
-          cb(null, true);
-        } else {
-          cb(new Error("Only image files are allowed"), false);
-        }
-      },
-    }),
-  )
-  @ApiOperation({ summary: "Upload profile photo" })
-  async uploadPhoto(
+  @ApiOperation({
+    summary:
+      "Link a photo URL to a user profile (URL returned by media-service)",
+  })
+  async addPhotoUrl(
     @Param("keycloakId") keycloakId: string,
-    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { imageUrl: string },
   ) {
-    // When forwarded from gateway without actual file, use body filename
-    const filename = file?.filename ?? "placeholder.jpg";
-    return this.usersService.addPhoto(keycloakId, filename);
+    if (!body.imageUrl) {
+      throw new BadRequestException("imageUrl is required");
+    }
+    return this.usersService.addPhoto(keycloakId, body.imageUrl);
   }
 
   @Delete(":keycloakId")

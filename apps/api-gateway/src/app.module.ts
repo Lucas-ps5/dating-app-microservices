@@ -5,6 +5,7 @@ import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { UsersProxyModule } from "./users/users-proxy.module";
 import { ChatProxyModule } from "./chat/chat-proxy.module";
+import { MediaProxyModule } from "./media/media-proxy.module";
 import configuration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
 
@@ -22,6 +23,7 @@ import { validationSchema } from "./config/validation.schema";
     AuthModule,
     UsersProxyModule,
     ChatProxyModule,
+    MediaProxyModule,
   ],
   controllers: [AppController],
   providers: [AppService],
