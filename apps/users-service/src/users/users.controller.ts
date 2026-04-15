@@ -19,6 +19,11 @@ import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 @Controller("users")
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+  @Post("register")
+  @ApiOperation({ summary: "Register a new user" })
+  async register(@Body() dto: CreateUserDto) {
+    return this.usersService.register(dto);
+  }
 
   @Post("profile")
   @ApiOperation({

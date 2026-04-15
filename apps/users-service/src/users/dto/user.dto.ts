@@ -5,25 +5,62 @@ import {
   IsDateString,
   IsNumber,
   IsBoolean,
-  IsObject,
   MaxLength,
   Min,
   Max,
+  MinLength,
+  IsEnum,
+  ValidateNested,
+  IsNotEmpty,
 } from "class-validator";
 import { Type } from "class-transformer";
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+
+// 1. Define an Enum for strict gender validation
+export enum Gender {
+  MALE = "male",
+  FEMALE = "female",
+}
+
+// 2. Create a separate DTO for Preferences to enable deep validation
+export class UserPreferencesDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(18)
+  ageMin?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Max(100)
+  ageMax?: number;
+
+  @IsOptional()
+  @IsString()
+  genderPreference?: string;
+
+  @IsOptional()
+  @IsNumber()
+  maxDistance?: number;
+}
 
 export class CreateUserDto {
-  @IsString()
-  keycloakId: string;
+  // keycloakId removed as requested
 
   @IsEmail()
+  @ApiProperty({ example: "user@example.com" })
   email: string;
 
   @IsOptional()
   @IsString()
   @ApiPropertyOptional()
-  name?: string;
+  username?: string;
+
+  // Password added with basic validation
+  @IsString()
+  @MinLength(6)
+  @IsNotEmpty()
+  @ApiProperty({ example: "SecretPassword123" })
+  password: string;
 }
 
 export class UpdateUserDto {
@@ -31,7 +68,7 @@ export class UpdateUserDto {
   @IsString()
   @MaxLength(100)
   @ApiPropertyOptional()
-  name?: string;
+  username?: string;
 
   @IsOptional()
   @IsString()
@@ -44,10 +81,11 @@ export class UpdateUserDto {
   @ApiPropertyOptional()
   birthdate?: string;
 
+  // Using the Enum for strict validation
   @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  gender?: string;
+  @IsEnum(Gender)
+  @ApiPropertyOptional({ enum: Gender })
+  gender?: Gender;
 
   @IsOptional()
   @IsNumber()
@@ -80,27 +118,21 @@ export class UpdateUserDto {
   @ApiPropertyOptional()
   isActive?: boolean;
 
+  // Using ValidateNested to validate the inner object
   @IsOptional()
-  @IsObject()
-  @ApiPropertyOptional()
-  preferences?: {
-    ageMin?: number;
-    ageMax?: number;
-    genderPreference?: string;
-    maxDistance?: number;
-  };
+  @ValidateNested()
+  @Type(() => UserPreferencesDto)
+  @ApiPropertyOptional({ type: UserPreferencesDto })
+  preferences?: UserPreferencesDto;
 }
 
 export class DiscoverQueryDto {
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  currentUserId?: string;
+  // currentUserId removed for security. You should get this from the JWT token in the controller.
 
   @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  gender?: string;
+  @IsEnum(Gender)
+  @ApiPropertyOptional({ enum: Gender })
+  gender?: Gender;
 
   @IsOptional()
   @IsNumber()

@@ -28,6 +28,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
 import { UsersProxyService } from "./users-proxy.service";
+import { Public } from "../auth/decorators/public.decorator";
 
 @ApiTags("users")
 @ApiBearerAuth()
@@ -37,6 +38,13 @@ export class UsersController {
   private readonly logger = new Logger(UsersController.name);
 
   constructor(private readonly usersProxy: UsersProxyService) {}
+
+  @Public()
+  @Post("register")
+  @ApiOperation({ summary: "Register a new user" })
+  async register(@Body() body: Record<string, unknown>) {
+    return this.usersProxy.forward("post", "/register", { body });
+  }
 
   @Post("profile")
   @ApiOperation({ summary: "Create or update my profile" })
