@@ -10,7 +10,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private configService: ConfigService) {
     const authServerUrl = configService.get<string>("keycloak.authServerUrl");
     const realm = configService.get<string>("keycloak.realm");
-    const clientId = configService.get<string>("keycloak.clientId");
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

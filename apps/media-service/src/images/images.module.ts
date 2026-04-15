@@ -3,9 +3,11 @@ import { ImagesController } from "./images.controller";
 import { ImagesService } from "./images.service";
 import { MinioModule } from "../minio/minio.module";
 import { KafkaModule } from "../kafka/kafka.module";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { Image } from "./image.entity";
 
 @Module({
-  imports: [MinioModule, KafkaModule],
+  imports: [TypeOrmModule.forFeature([Image]), MinioModule, KafkaModule],
   controllers: [ImagesController],
   providers: [ImagesService],
 })

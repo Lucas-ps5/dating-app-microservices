@@ -17,4 +17,11 @@ export default () => ({
   upload: {
     maxFileSizeMb: parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB || "10", 10),
   },
+  database: {
+    host: process.env.DB_HOST || "localhost",
+    port: parseInt(process.env.DB_PORT || "5435", 10),
+    user: process.env.DB_USER || "hmeet_media",
+    password: process.env.DB_PASSWORD || "hmeet_media_password",
+    database: process.env.DB_NAME || "hmeet_media",
+  },
 });

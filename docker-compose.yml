@@ -59,6 +59,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Postgres for Media Service ──────────────────────────────────────────────
+  media-db:
+    image: postgres:16-alpine
+    container_name: hmeet-media-db
+    environment:
+      POSTGRES_DB: hmeet_media
+      POSTGRES_USER: hmeet_media
+      POSTGRES_PASSWORD: hmeet_media_password
+    ports:
+      - "5435:5432"
+    volumes:
+      - media_db_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmeet_media"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─── Keycloak ─────────────────────────────────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:23.0

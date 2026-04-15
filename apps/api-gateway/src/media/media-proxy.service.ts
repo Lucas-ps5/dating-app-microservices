@@ -7,6 +7,15 @@ const FormData = require("form-data") as typeof import("form-data");
 import type { AxiosResponse } from "axios";
 import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
 
+export interface UploadImageResponse {
+  url: string;
+  objectName: string;
+}
+
+export interface PresignedUrlResponse {
+  url: string;
+}
+
 @Injectable()
 export class MediaProxyService {
   private readonly logger = new Logger(MediaProxyService.name);
@@ -34,7 +43,7 @@ export class MediaProxyService {
     file: Express.Multer.File,
     user: AuthenticatedUser,
     context = "general",
-  ): Promise<AxiosResponse> {
+  ): Promise<AxiosResponse<UploadImageResponse>> {
     const form = new FormData();
     form.append("photo", file.buffer, {
       filename: file.originalname,
@@ -58,7 +67,7 @@ export class MediaProxyService {
     objectName: string,
     expires = 3600,
     user: AuthenticatedUser,
-  ): Promise<AxiosResponse> {
+  ): Promise<AxiosResponse<PresignedUrlResponse>> {
     return firstValueFrom(
       this.httpService.get(`${this.serviceUrl}/media/images/presign`, {
         params: { objectName, expires },
@@ -70,7 +79,7 @@ export class MediaProxyService {
   async deleteImage(
     objectName: string,
     user: AuthenticatedUser,
-  ): Promise<AxiosResponse> {
+  ): Promise<AxiosResponse<void>> {
     return firstValueFrom(
       this.httpService.delete(
         `${this.serviceUrl}/media/images/${encodeURIComponent(objectName)}`,

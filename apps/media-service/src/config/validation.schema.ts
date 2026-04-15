@@ -15,4 +15,9 @@ export const validationSchema = Joi.object({
   KAFKA_BROKERS: Joi.string().default("localhost:29092"),
   KAFKA_GROUP_ID: Joi.string().default("media-service"),
   UPLOAD_MAX_FILE_SIZE_MB: Joi.number().default(10),
+  DB_HOST: Joi.string().default("localhost"),
+  DB_PORT: Joi.number().default(5435),
+  DB_USER: Joi.string().default("hmeet_media"),
+  DB_PASSWORD: Joi.string().default("hmeet_media_password"),
+  DB_NAME: Joi.string().default("hmeet_media"),
 });

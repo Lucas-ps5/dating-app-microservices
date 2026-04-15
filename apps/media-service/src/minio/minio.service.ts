@@ -59,11 +59,12 @@ export class MinioService implements OnModuleInit {
   async upload(
     buffer: Buffer,
     originalName: string,
+    name: string,
     mimetype: string,
     folder = "general",
   ): Promise<{ objectName: string; url: string }> {
     const ext = extname(originalName) || ".bin";
-    const objectName = `${folder}/${uuidv4()}${ext}`;
+    const objectName = `${folder}/${name}${ext}`;
 
     try {
       await this.client.putObject(
