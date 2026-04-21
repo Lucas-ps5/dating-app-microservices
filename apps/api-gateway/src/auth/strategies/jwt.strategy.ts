@@ -7,6 +7,8 @@ import { AuthenticatedUser, KeycloakUser } from "../interfaces/user.interface";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
+  private readonly clientId: string;
+
   constructor(private configService: ConfigService) {
     const authServerUrl = configService.get<string>("keycloak.authServerUrl");
     const realm = configService.get<string>("keycloak.realm");
@@ -24,17 +26,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         jwksUri: `${authServerUrl}/realms/${realm}/protocol/openid-connect/certs`,
       }),
     });
+    this.clientId = configService.get<string>("keycloak.clientId") || "";
   }
 
   validate(payload: KeycloakUser): AuthenticatedUser {
-    const clientId = this.configService.get<string>("keycloak.clientId") || "";
-
     // Extract realm roles
     const realmRoles: string[] = payload.realm_access?.roles || [];
 
     // Extract client-specific roles
     const clientRoles: string[] =
-      payload.resource_access?.[clientId]?.roles || [];
+      payload.resource_access?.[this.clientId]?.roles || [];
 
     // Combine all roles
     const allRoles: string[] = [...realmRoles, ...clientRoles];

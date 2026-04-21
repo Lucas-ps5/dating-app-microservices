@@ -80,8 +80,11 @@ export class UsersService implements OnModuleInit {
       }
       keycloakId = createdUser.id;
     } catch (error) {
-      this.logger.error(`Keycloak registration failed: ${error.message}`);
-      if (error.response?.status === 409) {
+      this.logger.error("Keycloak registration failed", error);
+      if (
+        error instanceof Error &&
+        (error as { response?: { status?: number } }).response?.status === 409
+      ) {
         throw new ConflictException("User already exists in Keycloak");
       }
       throw error;
@@ -115,7 +118,10 @@ export class UsersService implements OnModuleInit {
       try {
         await this.kcAdminClient.users.del({ id: keycloakId });
       } catch (rollbackError) {
-        this.logger.error("Rollback failed. Keycloak user is orphaned.");
+        this.logger.error(
+          "Rollback failed. Keycloak user is orphaned.",
+          rollbackError,
+        );
       }
       throw error;
     }
