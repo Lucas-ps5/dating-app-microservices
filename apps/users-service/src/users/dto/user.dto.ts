@@ -72,6 +72,12 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  @ApiPropertyOptional()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(500)
   @ApiPropertyOptional()
   bio?: string;

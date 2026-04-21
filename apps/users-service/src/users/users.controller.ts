@@ -14,6 +14,8 @@ import {
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
+import { AuthenticatedUser, FieldToExtractCodes } from "@app/common";
+import { CurrentUser } from "src/auth/decorators/current-user.decorator";
 
 @ApiTags("users")
 @Controller("users")
@@ -25,12 +27,15 @@ export class UsersController {
     return this.usersService.register(dto);
   }
 
-  @Post("profile")
+  @Post("update")
   @ApiOperation({
-    summary: "Create profile (called by api-gateway on first login)",
+    summary: "Update profile (called by api-gateway on first login)",
   })
-  async createProfile(@Body() dto: CreateUserDto) {
-    return this.usersService.createOrUpdate(dto);
+  async updateProfile(
+    @Body() dto: UpdateUserDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.usersService.updateProfile(dto, user);
   }
 
   @Get("by-keycloak/:keycloakId")
@@ -47,8 +52,12 @@ export class UsersController {
 
   @Get(":id")
   @ApiOperation({ summary: "Get profile by internal UUID" })
-  async getById(@Param("id") id: string) {
-    return this.usersService.findById(id);
+  async getById(
+    @Param("id") id: string,
+    @Query("fieldToExtractCodes")
+    fieldToExtractCodes: FieldToExtractCodes,
+  ) {
+    return this.usersService.findById(id, fieldToExtractCodes);
   }
 
   @Patch("by-keycloak/:keycloakId")

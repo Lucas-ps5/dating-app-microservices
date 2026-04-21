@@ -10,7 +10,11 @@ import { Repository } from "typeorm";
 import { User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
-import { KAFKA_TOPICS } from "@app/common";
+import {
+  AuthenticatedUser,
+  FieldToExtractCodes,
+  KAFKA_TOPICS,
+} from "@app/common";
 import KeycloakAdminClient from "keycloak-admin"; // 1. Import Keycloak Admin Client
 
 @Injectable()
@@ -127,20 +131,35 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  async createOrUpdate(dto: CreateUserDto): Promise<User> {
-    const emailTaken = await this.usersRepo.findOne({
-      where: { email: dto.email },
+  async updateProfile(
+    dto: UpdateUserDto,
+    currentUser: AuthenticatedUser,
+  ): Promise<User> {
+    const user = await this.usersRepo.findOne({
+      where: { keycloakId: currentUser.userId },
     });
-    if (emailTaken) {
-      throw new ConflictException(
-        `Email ${dto.email} is already in use by another profile`,
+    if (!user) {
+      throw new NotFoundException(
+        `No profile found for keycloakId=${currentUser.userId}`,
       );
     }
 
-    const user = this.usersRepo.create(dto);
-    const saved = await this.usersRepo.save(user);
-    this.logger.log(`Created profile for username=${dto.username}`);
-    return saved;
+    // Only update fields if they are provided in the DTO
+    if (dto.username) user.username = dto.username;
+    if (dto.title) user.title = dto.title;
+    if (dto.bio) user.bio = dto.bio;
+    if (dto.gender) user.gender = dto.gender;
+    if (dto.birthdate) user.birthdate = new Date(dto.birthdate);
+    if (dto.latitude) user.latitude = dto.latitude;
+    if (dto.longitude) user.longitude = dto.longitude;
+    if (dto.city) user.city = dto.city;
+    if (dto.country) user.country = dto.country;
+    if (dto.isActive) user.isActive = dto.isActive;
+    if (dto.preferences) user.preferences = dto.preferences;
+
+    const updatedUser = await this.usersRepo.save(user);
+    this.logger.log(`Updated profile for user ${currentUser.userId}`);
+    return updatedUser;
   }
 
   async findByKeycloakId(keycloakId: string): Promise<User> {
@@ -153,12 +172,47 @@ export class UsersService implements OnModuleInit {
     return user;
   }
 
-  async findById(id: string): Promise<User> {
+  async findById(
+    id: string,
+    fieldToExtractCodes: FieldToExtractCodes,
+  ): Promise<Partial<User>> {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException(`User ${id} not found`);
     }
-    return user;
+    return this.extractUserProperties(fieldToExtractCodes, user);
+  }
+
+  private extractUserProperties(
+    code: FieldToExtractCodes,
+    user: User,
+  ): Partial<User> {
+    switch (code) {
+      case "Code-1":
+        return {
+          id: user.id,
+          username: user.username,
+          photos: [user.photos[0]],
+          title: user.title,
+          bio: user.bio,
+          gender: user.gender,
+          birthdate: user.birthdate,
+          isActive: user.isActive,
+          preferences: user.preferences,
+          latitude: user.latitude,
+          longitude: user.longitude,
+        };
+      case "Code-2":
+        return {
+          id: user.id,
+          username: user.username,
+          title: user.title,
+          photos: [user.photos[0]],
+          city: user.city,
+        };
+      default:
+        return user;
+    }
   }
 
   async updateByKeycloakId(

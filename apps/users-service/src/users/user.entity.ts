@@ -32,7 +32,6 @@ export class User {
   keycloakId: string;
 
   @Column({ unique: true, select: false })
-  @Index()
   email: string;
 
   @Column({ nullable: true })
@@ -41,6 +40,9 @@ export class User {
   // 4. PASSWORD: REMOVED
   // The DTO takes the password to send to Keycloak, but we do NOT save it here.
   // Keycloak verifies the user, and we trust the token.
+
+  @Column({ nullable: true, length: 255 })
+  title: string;
 
   @Column({ nullable: true, length: 500 })
   bio: string;
