@@ -1,10 +1,12 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  BeforeInsert,
+  BeforeUpdate,
+  PrimaryColumn,
 } from "typeorm";
 
 // 1. Define the Enum (Matches your DTO)
@@ -23,23 +25,28 @@ export interface UserPreferences {
 
 @Entity("users")
 export class User {
-  @PrimaryGeneratedColumn("uuid")
+  @PrimaryColumn("uuid")
+  @Index()
   id: string;
 
-  // 3. KEYCLOAK ID: We keep this here to link the local profile to the Keycloak account.
-  @Column({ unique: true, select: false })
-  @Index()
-  keycloakId: string;
+  // // 3. KEYCLOAK ID: We keep this here to link the local profile to the Keycloak account.
+  // @Column({ unique: true, select: false })
+  // @Index()
+  // keycloakId: string;
 
   @Column({ unique: true, select: false })
   email: string;
 
-  @Column({ nullable: true })
+  @Column({ unique: true })
   username: string;
 
-  // 4. PASSWORD: REMOVED
-  // The DTO takes the password to send to Keycloak, but we do NOT save it here.
-  // Keycloak verifies the user, and we trust the token.
+  @BeforeInsert()
+  @BeforeUpdate()
+  normalizeUsername() {
+    if (this.username) {
+      this.username = this.username.toLowerCase().trim();
+    }
+  }
 
   @Column({ nullable: true, length: 255 })
   title: string;

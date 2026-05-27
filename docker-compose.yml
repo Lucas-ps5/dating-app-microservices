@@ -209,6 +209,8 @@ volumes:
     driver: local
   chat_db_data:
     driver: local
+  media_db_data:
+    driver: local
   minio_data:
     driver: local
 

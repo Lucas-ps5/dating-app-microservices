@@ -41,7 +41,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const allRoles: string[] = [...realmRoles, ...clientRoles];
 
     return {
-      userId: payload.sub,
+      id: payload.sub,
       username: payload.preferred_username || payload.email || payload.sub,
       email: payload.email,
       roles: allRoles,

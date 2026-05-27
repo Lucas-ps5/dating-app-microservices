@@ -17,6 +17,7 @@ export interface PaginatedMessages {
   total: number;
   page: number;
   limit: number;
+  totalPages: number;
 }
 
 @Injectable()
@@ -56,13 +57,24 @@ export class MessagesService {
     page = 1,
     limit = 50,
   ): Promise<PaginatedMessages> {
+    const sanitizedPage = Math.max(1, Math.floor(page));
+    const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
     const [data, total] = await this.messagesRepo.findAndCount({
       where: { matchId },
       order: { sentAt: "DESC" },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: (sanitizedPage - 1) * sanitizedLimit,
+      take: sanitizedLimit,
     });
-    return { data: data.reverse(), total, page, limit };
+
+    const totalPages = Math.ceil(total / sanitizedLimit);
+
+    return {
+      data: data.reverse(),
+      total,
+      page: sanitizedPage,
+      limit: sanitizedLimit,
+      totalPages,
+    };
   }
 
   async markAsRead(matchId: string, userId: string): Promise<void> {

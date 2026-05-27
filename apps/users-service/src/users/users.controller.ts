@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Delete,
   Body,
   Param,
@@ -38,12 +37,6 @@ export class UsersController {
     return this.usersService.updateProfile(dto, user);
   }
 
-  @Get("by-keycloak/:keycloakId")
-  @ApiOperation({ summary: "Get profile by Keycloak ID" })
-  async getByKeycloakId(@Param("keycloakId") keycloakId: string) {
-    return this.usersService.findByKeycloakId(keycloakId);
-  }
-
   @Get("discover")
   @ApiOperation({ summary: "Discover potential matches" })
   async discover(@Query() query: DiscoverQueryDto) {
@@ -56,17 +49,32 @@ export class UsersController {
     @Param("id") id: string,
     @Query("fieldToExtractCodes")
     fieldToExtractCodes: FieldToExtractCodes,
+    @Query("currentUserLat") currentUserLat?: number,
+    @Query("currentUserLon") currentUserLon?: number,
   ) {
-    return this.usersService.findById(id, fieldToExtractCodes);
+    return this.usersService.findById(
+      id,
+      fieldToExtractCodes,
+      currentUserLat,
+      currentUserLon,
+    );
   }
 
-  @Patch("by-keycloak/:keycloakId")
-  @ApiOperation({ summary: "Update profile by Keycloak ID" })
-  async updateByKeycloakId(
-    @Param("keycloakId") keycloakId: string,
-    @Body() dto: UpdateUserDto,
+  @Get("by-username/:username")
+  @ApiOperation({ summary: "Get profile by username" })
+  async getByUsername(
+    @Param("username") username: string,
+    @Query("fieldToExtractCodes")
+    fieldToExtractCodes: FieldToExtractCodes,
+    @Query("currentUserLat") currentUserLat?: number,
+    @Query("currentUserLon") currentUserLon?: number,
   ) {
-    return this.usersService.updateByKeycloakId(keycloakId, dto);
+    return this.usersService.findByUsername(
+      username,
+      fieldToExtractCodes,
+      currentUserLat,
+      currentUserLon,
+    );
   }
 
   @Post("by-keycloak/:keycloakId/photos")

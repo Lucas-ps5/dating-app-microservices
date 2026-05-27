@@ -17,7 +17,7 @@ export interface KeycloakUser {
 }
 
 export interface AuthenticatedUser {
-  userId: string;
+  id: string;
   username: string;
   email?: string;
   roles: string[];

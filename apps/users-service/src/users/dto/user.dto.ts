@@ -12,6 +12,7 @@ import {
   IsEnum,
   ValidateNested,
   IsNotEmpty,
+  Matches,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
@@ -50,10 +51,16 @@ export class CreateUserDto {
   @ApiProperty({ example: "user@example.com" })
   email: string;
 
-  @IsOptional()
   @IsString()
-  @ApiPropertyOptional()
-  username?: string;
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(20)
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message:
+      "Username can only contain letters, numbers, underscores, and dashes.",
+  })
+  @ApiProperty({ example: "johndoe" })
+  username: string;
 
   // Password added with basic validation
   @IsString()
@@ -64,11 +71,16 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto {
-  @IsOptional()
   @IsString()
-  @MaxLength(100)
-  @ApiPropertyOptional()
-  username?: string;
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(20)
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message:
+      "Username can only contain letters, numbers, underscores, and dashes.",
+  })
+  @ApiProperty({ example: "johndoe" })
+  username: string;
 
   @IsOptional()
   @IsString()

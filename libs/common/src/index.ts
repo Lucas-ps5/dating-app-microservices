@@ -9,3 +9,6 @@ export * from "./interfaces/authenticated-user.interface";
 
 // Types
 export * from "./types/types";
+
+// Utils
+export * from "./utils/utils";

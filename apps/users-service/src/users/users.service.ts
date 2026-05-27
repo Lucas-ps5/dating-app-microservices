@@ -6,16 +6,51 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { User } from "./user.entity";
+import { Repository, QueryFailedError } from "typeorm";
+import { Gender, User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
   AuthenticatedUser,
   FieldToExtractCodes,
   KAFKA_TOPICS,
+  calculateDistance,
 } from "@app/common";
-import KeycloakAdminClient from "keycloak-admin"; // 1. Import Keycloak Admin Client
+import KeycloakAdminClient from "keycloak-admin";
+import { UserWithDistance } from "./interfaces/user-with-distance.interface";
+
+export interface PaginatedUsers {
+  data: Partial<UserWithDistance>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+const FIELD_MAP = {
+  "Code-1": [
+    "id",
+    "username",
+    "photos",
+    "title",
+    "bio",
+    "gender",
+    "birthdate",
+    "isActive",
+    "preferences",
+    "latitude",
+    "longitude",
+  ],
+  "Code-2": [
+    "id",
+    "username",
+    "photos",
+    "title",
+    "city",
+    "latitude",
+    "longitude",
+  ],
+} as const;
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -60,8 +95,8 @@ export class UsersService implements OnModuleInit {
     // 1. Create User in Keycloak
     let keycloakId: string;
     try {
-      await this.kcAdminClient.users.create({
-        username: dto.username || dto.email,
+      const response = await this.kcAdminClient.users.create({
+        username: dto.username,
         email: dto.email,
         enabled: true,
         credentials: [
@@ -71,18 +106,10 @@ export class UsersService implements OnModuleInit {
             temporary: false,
           },
         ],
-        emailVerified: false, // Set to true if you want to skip email verification
+        emailVerified: false,
       });
 
-      // 2. Retrieve the Keycloak ID
-      // The create method doesn't return the ID directly, so we search for the user by email
-      const users = await this.kcAdminClient.users.find({ email: dto.email });
-      const createdUser = users.find((u) => u.email === dto.email);
-
-      if (!createdUser?.id) {
-        throw new Error("Failed to retrieve Keycloak User ID after creation");
-      }
-      keycloakId = createdUser.id;
+      keycloakId = response.id;
     } catch (error) {
       this.logger.error("Keycloak registration failed", error);
       if (
@@ -94,16 +121,8 @@ export class UsersService implements OnModuleInit {
       throw error;
     }
 
-    // 3. Create local DB entry
-    const existingLocalUser = await this.usersRepo.findOne({
-      where: { email: dto.email },
-    });
-    if (existingLocalUser) {
-      throw new ConflictException(`Email ${dto.email} is already in use.`);
-    }
-
     const user = this.usersRepo.create({
-      keycloakId: keycloakId,
+      id: keycloakId,
       email: dto.email,
       username: dto.username,
     });
@@ -116,9 +135,6 @@ export class UsersService implements OnModuleInit {
       return savedUser;
     } catch (error) {
       // 4. Rollback: If DB save fails, delete from Keycloak to stay consistent
-      this.logger.error(
-        `DB save failed. Rolling back Keycloak user ${keycloakId}`,
-      );
       try {
         await this.kcAdminClient.users.del({ id: keycloakId });
       } catch (rollbackError) {
@@ -126,6 +142,16 @@ export class UsersService implements OnModuleInit {
           "Rollback failed. Keycloak user is orphaned.",
           rollbackError,
         );
+      }
+      this.logger.error(
+        `DB save failed. Rolling back Keycloak user ${keycloakId}`,
+      );
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string }).code === "23505"
+      ) {
+        // 23505 is the Postgres error code for unique constraint violation
+        throw new ConflictException("Username is already taken.");
       }
       throw error;
     }
@@ -136,7 +162,7 @@ export class UsersService implements OnModuleInit {
     currentUser: AuthenticatedUser,
   ): Promise<User> {
     const user = await this.usersRepo.findOne({
-      where: { keycloakId: currentUser.userId },
+      where: { id: currentUser.userId },
     });
     if (!user) {
       throw new NotFoundException(
@@ -162,78 +188,138 @@ export class UsersService implements OnModuleInit {
     return updatedUser;
   }
 
-  async findByKeycloakId(keycloakId: string): Promise<User> {
-    const user = await this.usersRepo.findOne({ where: { keycloakId } });
-    if (!user) {
-      throw new NotFoundException(
-        `No profile found for keycloakId=${keycloakId}`,
-      );
-    }
-    return user;
-  }
-
   async findById(
     id: string,
     fieldToExtractCodes: FieldToExtractCodes,
+    currentUserLat?: number,
+    currentUserLon?: number,
   ): Promise<Partial<User>> {
-    const user = await this.usersRepo.findOne({ where: { id } });
+    const fieldsToSelect = FIELD_MAP[fieldToExtractCodes];
+
+    const user = await this.usersRepo.findOne({
+      where: { id },
+      select: [...fieldsToSelect],
+    });
+
     if (!user) {
       throw new NotFoundException(`User ${id} not found`);
     }
-    return this.extractUserProperties(fieldToExtractCodes, user);
-  }
 
-  private extractUserProperties(
-    code: FieldToExtractCodes,
-    user: User,
-  ): Partial<User> {
-    switch (code) {
-      case "Code-1":
-        return {
-          id: user.id,
-          username: user.username,
-          photos: [user.photos[0]],
-          title: user.title,
-          bio: user.bio,
-          gender: user.gender,
-          birthdate: user.birthdate,
-          isActive: user.isActive,
-          preferences: user.preferences,
-          latitude: user.latitude,
-          longitude: user.longitude,
-        };
-      case "Code-2":
-        return {
-          id: user.id,
-          username: user.username,
-          title: user.title,
-          photos: [user.photos[0]],
-          city: user.city,
-        };
-      default:
-        return user;
+    const userWithDistance: UserWithDistance = { ...user };
+    if (user.latitude && user.longitude && currentUserLat && currentUserLon) {
+      const distanceKm = calculateDistance(
+        currentUserLat,
+        currentUserLon,
+        user.latitude,
+        user.longitude,
+      );
+      userWithDistance.distance = Math.round(distanceKm * 10) / 10;
     }
+
+    return userWithDistance;
   }
 
-  async updateByKeycloakId(
-    keycloakId: string,
-    dto: UpdateUserDto,
-  ): Promise<User> {
-    const user = await this.findByKeycloakId(keycloakId);
-    Object.assign(user, dto);
-    const saved = await this.usersRepo.save(user);
+  async findByUsername(
+    username: string,
+    fieldToExtractCodes: FieldToExtractCodes,
+    currentUserLat?: number,
+    currentUserLon?: number,
+  ): Promise<Partial<UserWithDistance>> {
+    const fieldsToSelect = FIELD_MAP[fieldToExtractCodes];
 
-    await this.kafkaProducer.emit(KAFKA_TOPICS.USER_UPDATED, {
-      keycloakId,
-      email: saved.email,
-      name: saved.username,
+    const user = await this.usersRepo.findOne({
+      where: { username },
+      select: [...fieldsToSelect],
     });
 
-    return saved;
+    if (!user) {
+      throw new NotFoundException(`User ${username} not found`);
+    }
+
+    const userWithDistance: UserWithDistance = { ...user };
+    if (user.latitude && user.longitude && currentUserLat && currentUserLon) {
+      const distanceKm = calculateDistance(
+        currentUserLat,
+        currentUserLon,
+        user.latitude,
+        user.longitude,
+      );
+      userWithDistance.distance = Math.round(distanceKm * 10) / 10;
+    }
+
+    return userWithDistance;
   }
 
-  async addPhoto(keycloakId: string, filename: string): Promise<User> {
-    const user = await this.findByKeycloakId(keycloakId);
+  async allUsers({
+    currentUserLat,
+    currentUserLon,
+    page,
+    limit,
+    gender,
+  }: {
+    currentUserLat?: number;
+    currentUserLon?: number;
+    page: number;
+    limit: number;
+    gender?: Gender;
+  }): Promise<PaginatedUsers> {
+    const sanitizedPage = Math.max(1, Math.floor(page));
+    const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+
+    const [users, total] = await this.usersRepo.findAndCount({
+      where: { gender },
+      order: { createdAt: "DESC" },
+      select: [
+        "id",
+        "username",
+        "photos",
+        "title",
+        "gender",
+        "birthdate",
+        "isActive",
+        "latitude",
+        "longitude",
+      ],
+      skip: (sanitizedPage - 1) * sanitizedLimit,
+      take: sanitizedLimit,
+    });
+
+    const usersWithDistance: UserWithDistance[] = users.map((user) => {
+      if (
+        !user.latitude ||
+        !user.longitude ||
+        !currentUserLat ||
+        !currentUserLon
+      ) {
+        return user;
+      }
+
+      const distanceKm = calculateDistance(
+        currentUserLat,
+        currentUserLon,
+        user.latitude,
+        user.longitude,
+      );
+
+      return {
+        ...user,
+        distance: Math.round(distanceKm * 10) / 10,
+      };
+    });
+
+    const totalPages = Math.ceil(total / sanitizedLimit);
+
+    return {
+      data: usersWithDistance,
+      total,
+      page: sanitizedPage,
+      limit: sanitizedLimit,
+      totalPages,
+    };
+  }
+
+  async addPhoto(id: string, filename: string): Promise<User> {
+    const user = await this.findById(id, "Code-2");
     user.photos = [...(user.photos ?? []), filename];
     return this.usersRepo.save(user);
   }
@@ -270,12 +356,12 @@ export class UsersService implements OnModuleInit {
     return { data, total };
   }
 
-  async softDelete(keycloakId: string): Promise<void> {
-    const user = await this.findByKeycloakId(keycloakId);
+  async softDelete(id: string): Promise<void> {
+    const user = await this.findById(id, "Code-2");
     user.isActive = false;
     await this.usersRepo.save(user);
 
-    await this.kafkaProducer.emit(KAFKA_TOPICS.USER_DELETED, { keycloakId });
-    this.logger.log(`Soft-deleted user keycloakId=${keycloakId}`);
+    await this.kafkaProducer.emit(KAFKA_TOPICS.USER_DELETED, { id });
+    this.logger.log(`Soft-deleted user keycloakId=${id}`);
   }
 }
