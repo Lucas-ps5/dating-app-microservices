@@ -9,15 +9,15 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Put,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
-import { AuthenticatedUser, FieldToExtractCodes } from "@app/common";
-import { CurrentUser } from "src/auth/decorators/current-user.decorator";
+import { FieldToExtractCodes } from "@app/common";
 
 @ApiTags("users")
-@Controller("users")
+@Controller("user")
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
   @Post("register")
@@ -26,15 +26,12 @@ export class UsersController {
     return this.usersService.register(dto);
   }
 
-  @Post("update")
+  @Put(":id/update")
   @ApiOperation({
     summary: "Update profile (called by api-gateway on first login)",
   })
-  async updateProfile(
-    @Body() dto: UpdateUserDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.usersService.updateProfile(dto, user);
+  async updateProfile(@Body() dto: UpdateUserDto, @Param("id") id: string) {
+    return this.usersService.updateProfile(dto, id);
   }
 
   @Get("discover")
@@ -92,10 +89,10 @@ export class UsersController {
     return this.usersService.addPhoto(keycloakId, body.imageUrl);
   }
 
-  @Delete(":keycloakId")
+  @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Soft delete a user" })
-  async deleteUser(@Param("keycloakId") keycloakId: string) {
-    await this.usersService.softDelete(keycloakId);
+  async softDeleteUser(@Param("id") id: string) {
+    await this.usersService.softDelete(id);
   }
 }

@@ -2,18 +2,18 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Delete,
   Body,
   Param,
   Query,
-  Req,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   HttpCode,
   HttpStatus,
   Logger,
+  Put,
+  Request,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
@@ -23,7 +23,6 @@ import {
   ApiConsumes,
   ApiBody,
 } from "@nestjs/swagger";
-import { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
@@ -33,7 +32,7 @@ import { Public } from "../auth/decorators/public.decorator";
 @ApiTags("users")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("users")
+@Controller("user")
 export class UsersController {
   private readonly logger = new Logger(UsersController.name);
 
@@ -46,39 +45,11 @@ export class UsersController {
     return this.usersProxy.forward("post", "/register", { body });
   }
 
-  @Post("profile")
-  @ApiOperation({ summary: "Create or update my profile" })
-  async createProfile(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() body: Record<string, unknown>,
-  ) {
-    const res = await this.usersProxy.forward("post", "/profile", {
-      body: { ...body, keycloakId: user.userId, email: user.email },
-      user,
-    });
-    return res.data;
-  }
-
-  @Get("profile")
-  @ApiOperation({ summary: "Get my profile" })
-  async getMyProfile(@CurrentUser() user: AuthenticatedUser) {
-    const res = await this.usersProxy.forward(
-      "get",
-      `/by-keycloak/${user.userId}`,
-      { user },
-    );
-    return res.data;
-  }
-
   @Get("discover")
   @ApiOperation({ summary: "Discover potential matches" })
-  async discover(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query() query: Record<string, string>,
-  ) {
+  async discover(@Query() query: Record<string, string>) {
     const res = await this.usersProxy.forward("get", "/discover", {
-      user,
-      params: { ...query, currentUserId: user.userId },
+      params: { ...query },
     });
     return res.data;
   }
@@ -93,17 +64,15 @@ export class UsersController {
     return res.data;
   }
 
-  @Patch("profile")
-  @ApiOperation({ summary: "Update my profile" })
+  @Put(":id/update")
+  @ApiOperation({
+    summary: "Update profile (called by api-gateway on first login)",
+  })
   async updateProfile(
-    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const res = await this.usersProxy.forward(
-      "patch",
-      `/by-keycloak/${user.userId}`,
-      { body, user },
-    );
+    const res = await this.usersProxy.forward("put", `/${id}/update`, { body });
     return res.data;
   }
 
@@ -123,7 +92,7 @@ export class UsersController {
   ) {
     const res = await this.usersProxy.forward(
       "post",
-      `/by-keycloak/${user.userId}/photos`,
+      `/by-keycloak/${user.id}/photos`,
       {
         body: {
           filename: file.filename,
@@ -139,11 +108,8 @@ export class UsersController {
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete a user (admin)" })
-  async deleteUser(
-    @Param("id") id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    const res = await this.usersProxy.forward("delete", `/${id}`, { user });
+  async deleteUser(@Param("id") id: string) {
+    const res = await this.usersProxy.forward("delete", `/${id}`);
     return res.data;
   }
 }

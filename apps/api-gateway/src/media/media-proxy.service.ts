@@ -33,7 +33,7 @@ export class MediaProxyService {
   private userHeaders(user?: AuthenticatedUser): Record<string, string> {
     if (!user) return {};
     return {
-      "x-user-id": user.userId,
+      "x-user-id": user.id,
       "x-user-email": user.email ?? "",
       "x-user-roles": user.roles.join(","),
     };

@@ -30,7 +30,7 @@ export class ChatController {
   ) {
     const res = await this.chatProxy.forward("get", "/conversations", {
       user,
-      params: { ...query, userId: user.userId },
+      params: { ...query, userId: user.id },
     });
     return res.data;
   }
@@ -59,7 +59,7 @@ export class ChatController {
   ) {
     const res = await this.chatProxy.forward("post", "/matches", {
       user,
-      body: { user1Id: user.userId, user2Id: targetUserId },
+      body: { user1Id: user.id, user2Id: targetUserId },
     });
     return res.data;
   }
@@ -69,7 +69,7 @@ export class ChatController {
   async listMatches(@CurrentUser() user: AuthenticatedUser) {
     const res = await this.chatProxy.forward("get", "/matches", {
       user,
-      params: { userId: user.userId },
+      params: { userId: user.id },
     });
     return res.data;
   }

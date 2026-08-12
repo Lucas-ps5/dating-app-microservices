@@ -7,16 +7,16 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, QueryFailedError } from "typeorm";
+import { ConfigService } from "@nestjs/config";
 import { Gender, User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
-  AuthenticatedUser,
   FieldToExtractCodes,
   KAFKA_TOPICS,
   calculateDistance,
 } from "@app/common";
-import KeycloakAdminClient from "keycloak-admin";
+import KcAdminClient from "@keycloak/keycloak-admin-client";
 import { UserWithDistance } from "./interfaces/user-with-distance.interface";
 
 export interface PaginatedUsers {
@@ -55,30 +55,44 @@ const FIELD_MAP = {
 @Injectable()
 export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
-  private readonly kcAdminClient: KeycloakAdminClient;
+  private readonly kcAdminClient: KcAdminClient;
 
   constructor(
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
     private readonly kafkaProducer: KafkaProducerService,
+    private readonly configService: ConfigService,
   ) {
-    // 2. Initialize Keycloak Admin Client
-    // Ideally, move these URLs to a .env file or ConfigService
-    this.kcAdminClient = new KeycloakAdminClient({
-      baseUrl: process.env.KEYCLOAK_URL || "http://localhost:8080",
-      realmName: process.env.KEYCLOAK_REALM || "master",
+    this.kcAdminClient = new KcAdminClient({
+      baseUrl:
+        this.configService.get<string>("KEYCLOAK_URL") ??
+        "http://localhost:8080",
+      realmName:
+        this.configService.get<string>("KEYCLOAK_ADMIN_REALM") ?? "master",
     });
   }
 
-  // 3. Authenticate with Keycloak when the service starts
+  /** Authenticate (or re-authenticate) the admin client against Keycloak. */
+  private async authenticate(): Promise<void> {
+    await this.kcAdminClient.auth({
+      username:
+        this.configService.get<string>("KEYCLOAK_ADMIN_USERNAME") ?? "admin",
+      password:
+        this.configService.get<string>("KEYCLOAK_ADMIN_PASSWORD") ?? "admin",
+      grantType: "password",
+      clientId:
+        this.configService.get<string>("KEYCLOAK_ADMIN_CLIENT_ID") ??
+        "admin-cli",
+    });
+
+    this.kcAdminClient.setConfig({
+      realmName: this.configService.get<string>("KEYCLOAK_REALM") ?? "hmeet",
+    });
+  }
+
   async onModuleInit() {
     try {
-      await this.kcAdminClient.auth({
-        username: process.env.KEYCLOAK_ADMIN_USERNAME || "admin",
-        password: process.env.KEYCLOAK_ADMIN_PASSWORD || "admin",
-        grantType: "client_credentials",
-        clientId: process.env.KEYCLOAK_ADMIN_CLIENT_ID || "admin-cli",
-      });
+      await this.authenticate();
       this.logger.log("Successfully connected to Keycloak Admin API");
     } catch (error) {
       this.logger.error("Failed to connect to Keycloak Admin API", error);
@@ -95,6 +109,7 @@ export class UsersService implements OnModuleInit {
     // 1. Create User in Keycloak
     let keycloakId: string;
     try {
+      await this.authenticate();
       const response = await this.kcAdminClient.users.create({
         username: dto.username,
         email: dto.email,
@@ -134,8 +149,9 @@ export class UsersService implements OnModuleInit {
       );
       return savedUser;
     } catch (error) {
-      // 4. Rollback: If DB save fails, delete from Keycloak to stay consistent
+      // Rollback: If DB save fails, delete from Keycloak to stay consistent
       try {
+        await this.authenticate();
         await this.kcAdminClient.users.del({ id: keycloakId });
       } catch (rollbackError) {
         this.logger.error(
@@ -157,17 +173,12 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  async updateProfile(
-    dto: UpdateUserDto,
-    currentUser: AuthenticatedUser,
-  ): Promise<User> {
+  async updateProfile(dto: UpdateUserDto, id: string): Promise<User> {
     const user = await this.usersRepo.findOne({
-      where: { id: currentUser.userId },
+      where: { id },
     });
     if (!user) {
-      throw new NotFoundException(
-        `No profile found for keycloakId=${currentUser.userId}`,
-      );
+      throw new NotFoundException(`No profile found for keycloakId=${id}`);
     }
 
     // Only update fields if they are provided in the DTO
@@ -175,7 +186,7 @@ export class UsersService implements OnModuleInit {
     if (dto.title) user.title = dto.title;
     if (dto.bio) user.bio = dto.bio;
     if (dto.gender) user.gender = dto.gender;
-    if (dto.birthdate) user.birthdate = new Date(dto.birthdate);
+    if (dto.birthdate) user.birthdate = dto.birthdate;
     if (dto.latitude) user.latitude = dto.latitude;
     if (dto.longitude) user.longitude = dto.longitude;
     if (dto.city) user.city = dto.city;
@@ -184,7 +195,7 @@ export class UsersService implements OnModuleInit {
     if (dto.preferences) user.preferences = dto.preferences;
 
     const updatedUser = await this.usersRepo.save(user);
-    this.logger.log(`Updated profile for user ${currentUser.userId}`);
+    this.logger.log(`Updated profile for user ${id}`);
     return updatedUser;
   }
 

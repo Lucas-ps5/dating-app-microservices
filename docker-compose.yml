@@ -81,7 +81,7 @@ services:
 
   # ─── Keycloak ─────────────────────────────────────────────────────────────────
   keycloak:
-    image: quay.io/keycloak/keycloak:23.0
+    image: quay.io/keycloak/keycloak:26.1.1
     container_name: hmeet-keycloak
     environment:
       KC_DB: postgres
@@ -94,8 +94,11 @@ services:
       KC_METRICS_ENABLED: true
     command:
       - start-dev
+      - --import-realm
     ports:
       - "8080:8080"
+    volumes:
+      - ./keycloak/hmeet-realm.json:/opt/keycloak/data/import/hmeet-realm.json:ro
     depends_on:
       postgres:
         condition: service_healthy

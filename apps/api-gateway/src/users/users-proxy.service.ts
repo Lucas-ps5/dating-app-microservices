@@ -27,11 +27,11 @@ export class UsersProxyService {
       user?: AuthenticatedUser;
     } = {},
   ): Promise<AxiosResponse<T>> {
-    const url = `${this.serviceUrl}/users${path}`;
+    const url = `${this.serviceUrl}${path}`;
     const headers: Record<string, string> = {};
 
     if (options.user) {
-      headers["x-user-id"] = options.user.userId;
+      headers["x-user-id"] = options.user.id;
       headers["x-user-email"] = options.user.email ?? "";
       headers["x-user-roles"] = options.user.roles.join(",");
     }

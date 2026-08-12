@@ -13,6 +13,7 @@ import { validationSchema } from "./config/validation.schema";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [`.env.${process.env.NODE_ENV || "development"}`, ".env"],
       load: [configuration],
       validationSchema,
       validationOptions: {

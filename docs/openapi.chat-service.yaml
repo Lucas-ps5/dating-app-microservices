@@ -1,0 +1,368 @@
+﻿openapi: 3.0.3
+
+info:
+  title: HMeet – Chat Service
+  description: |
+    Internal HTTP + WebSocket API for matches, conversations and real-time messaging.
+    **Not exposed publicly** — the HTTP API is called only by the api-gateway over the internal Docker network.
+
+    **Authentication (HTTP)**: Caller identity is forwarded via the `x-user-id` header
+    (extracted from the Keycloak JWT by the api-gateway). No Bearer token is required here.
+
+    **Authentication (WebSocket)**: Clients connect directly to this service on the `/chat` namespace
+    and authenticate via `socket.handshake.auth = { userId: "<uuid>" }`.
+
+    **Database**: PostgreSQL (`hmeet_chat` — port 5434 in development)
+
+    **Async events (Kafka)**:
+    | Event | Topic | Produced when |
+    |---|---|---|
+    | `match.created` | `match-events` | A new match is created |
+    | `message.sent` | `message-events` | A message is persisted |
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3002/api
+    description: Local development (direct HTTP access)
+  - url: http://chat-service:3002/api
+    description: Internal Docker network
+
+tags:
+  - name: matches
+    description: Match creation and listing
+  - name: conversations
+    description: Conversation and message history
+  - name: websocket
+    description: Real-time Socket.IO events (informational)
+
+components:
+  schemas:
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "b1c2d3e4-0002-4a1b-c234-000000000002"
+        user1Id:
+          type: string
+          format: uuid
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        user2Id:
+          type: string
+          format: uuid
+          example: "c4d5e6f7-0003-4b2c-d345-000000000003"
+        isActive:
+          type: boolean
+          default: true
+        matchedAt:
+          type: string
+          format: date-time
+          example: "2025-07-01T08:00:00Z"
+
+    MessageType:
+      type: string
+      enum: [text, image, gif]
+      default: text
+      example: text
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "d7e8f9a0-0004-4c3d-e456-000000000004"
+        matchId:
+          type: string
+          format: uuid
+          example: "b1c2d3e4-0002-4a1b-c234-000000000002"
+        senderId:
+          type: string
+          format: uuid
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        content:
+          type: string
+          example: "Hey! How's it going?"
+        type:
+          $ref: "#/components/schemas/MessageType"
+        sentAt:
+          type: string
+          format: date-time
+          example: "2025-07-10T14:00:00Z"
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    Conversation:
+      type: object
+      description: A match enriched with the latest message
+      properties:
+        match:
+          $ref: "#/components/schemas/Match"
+        lastMessage:
+          $ref: "#/components/schemas/Message"
+
+    CreateMatchRequest:
+      type: object
+      required: [user1Id, user2Id]
+      properties:
+        user1Id:
+          type: string
+          format: uuid
+          description: Authenticated caller's ID (injected by gateway)
+        user2Id:
+          type: string
+          format: uuid
+          description: Target user's ID
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Caller is not a participant in this match
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+paths:
+
+  # ── Matches ────────────────────────────────────────────────────────────────
+
+  /chat/matches:
+    post:
+      tags: [matches]
+      summary: Create a match between two users
+      description: |
+        Persists the match. Emits a `match.created` Kafka event.
+        Returns a 409 Conflict if the pair is already matched (unique constraint on user1Id + user2Id).
+      operationId: createMatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMatchRequest"
+      responses:
+        "201":
+          description: Match created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Match already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [matches]
+      summary: List matches for a user
+      operationId: listMatches
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          description: UUID of the user whose matches to list (forwarded from JWT by gateway)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Match"
+
+  /chat/matches/{matchId}:
+    get:
+      tags: [matches]
+      summary: Get a match by ID
+      operationId: getMatchById
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Match details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Conversations / Messages ───────────────────────────────────────────────
+
+  /chat/conversations:
+    get:
+      tags: [conversations]
+      summary: List conversations (matches + last message)
+      description: Returns all matches for the user, each enriched with the most recent message.
+      operationId: listConversations
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          description: UUID of the authenticated user (forwarded by gateway)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+
+  /chat/conversations/{matchId}/messages:
+    get:
+      tags: [conversations]
+      summary: Get messages for a match (paginated)
+      description: Validates that the caller (via `x-user-id` header) is a participant before returning messages.
+      operationId: getMessages
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: x-user-id
+          in: header
+          required: true
+          description: Caller's UUID — validated against match participants
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paginated messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  total:
+                    type: integer
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /chat/conversations/{matchId}/read:
+    post:
+      tags: [conversations]
+      summary: Mark messages as read
+      description: Sets `readAt` timestamp for all unread messages in the match for the calling user.
+      operationId: markAsRead
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: x-user-id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Messages marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WebSocket Contract — Socket.IO /chat namespace
+# ─────────────────────────────────────────────────────────────────────────────
+# Server  : ws://localhost:3002   (chat-service)
+# Namespace: /chat
+#
+# Connection auth:
+#   socket.handshake.auth = { userId: "<uuid>" }
+#   Clients without userId are disconnected immediately.
+#
+# CLIENT → SERVER events:
+#   ┌──────────────┬─────────────────────────────────────────────────────────────┐
+#   │ Event        │ Payload                                                     │
+#   ├──────────────┼─────────────────────────────────────────────────────────────┤
+#   │ join-match   │ matchId: string                                             │
+#   │ message      │ { matchId: string, content: string, type?: MessageType }    │
+#   │ typing       │ matchId: string                                             │
+#   └──────────────┴─────────────────────────────────────────────────────────────┘
+#
+# SERVER → CLIENT events:
+#   ┌──────────────┬─────────────────────────────────────────────────────────────┐
+#   │ Event        │ Payload                                                     │
+#   ├──────────────┼─────────────────────────────────────────────────────────────┤
+#   │ joined       │ { matchId: string }                                         │
+#   │ new-message  │ Message object (see schema)                                 │
+#   │ typing       │ { userId: string, matchId: string }                        │
+#   │ error        │ { message: string }                                         │
+#   └──────────────┴─────────────────────────────────────────────────────────────┘
+# ─────────────────────────────────────────────────────────────────────────────

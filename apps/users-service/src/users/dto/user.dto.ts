@@ -49,7 +49,7 @@ export class CreateUserDto {
 
   @IsEmail()
   @ApiProperty({ example: "user@example.com" })
-  email: string;
+  email!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -60,14 +60,14 @@ export class CreateUserDto {
       "Username can only contain letters, numbers, underscores, and dashes.",
   })
   @ApiProperty({ example: "johndoe" })
-  username: string;
+  username!: string;
 
   // Password added with basic validation
   @IsString()
   @MinLength(6)
   @IsNotEmpty()
   @ApiProperty({ example: "SecretPassword123" })
-  password: string;
+  password!: string;
 }
 
 export class UpdateUserDto {
@@ -80,7 +80,7 @@ export class UpdateUserDto {
       "Username can only contain letters, numbers, underscores, and dashes.",
   })
   @ApiProperty({ example: "johndoe" })
-  username: string;
+  username!: string;
 
   @IsOptional()
   @IsString()

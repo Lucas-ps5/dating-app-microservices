@@ -55,7 +55,7 @@ export class User {
   bio: string;
 
   @Column({ type: "date", nullable: true })
-  birthdate: Date;
+  birthdate: string;
 
   // 5. Using the Enum type for the database column
   @Column({
@@ -88,9 +88,9 @@ export class User {
   @Column({ default: true })
   isActive: boolean;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
+  createdAt: string;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
+  updatedAt: string;
 }
