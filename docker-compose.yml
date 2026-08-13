@@ -39,6 +39,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Postgres for matches Service ───────────────────────────────────────────────
+  matches-db:
+    image: postgres:16-alpine
+    container_name: hmeet-matches-db
+    environment:
+      POSTGRES_DB: hmeet_matches
+      POSTGRES_USER: hmeet_matches
+      POSTGRES_PASSWORD: hmeet_matches_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - matches_db_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmeet_matches"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─── Postgres for Chat Service ───────────────────────────────────────────────
   chat-db:
     image: postgres:16-alpine

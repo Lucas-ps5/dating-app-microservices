@@ -15,15 +15,6 @@
         "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
       }
     },
-    "users-service": {
-      "type": "application",
-      "root": "apps/users-service",
-      "entryFile": "main",
-      "sourceRoot": "apps/users-service/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/users-service/tsconfig.app.json"
-      }
-    },
     "chat-service": {
       "type": "application",
       "root": "apps/chat-service",
@@ -31,6 +22,24 @@
       "sourceRoot": "apps/chat-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/chat-service/tsconfig.app.json"
+      }
+    },
+    "common": {
+      "type": "library",
+      "root": "libs/common",
+      "entryFile": "index",
+      "sourceRoot": "libs/common/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/common/tsconfig.lib.json"
+      }
+    },
+    "matches-service": {
+      "type": "application",
+      "root": "apps/matches-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/matches-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/matches-service/tsconfig.app.json"
       }
     },
     "media-service": {
@@ -42,13 +51,13 @@
         "tsConfigPath": "apps/media-service/tsconfig.app.json"
       }
     },
-    "common": {
-      "type": "library",
-      "root": "libs/common",
-      "entryFile": "index",
-      "sourceRoot": "libs/common/src",
+    "users-service": {
+      "type": "application",
+      "root": "apps/users-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/users-service/src",
       "compilerOptions": {
-        "tsConfigPath": "libs/common/tsconfig.lib.json"
+        "tsConfigPath": "apps/users-service/tsconfig.app.json"
       }
     }
   }

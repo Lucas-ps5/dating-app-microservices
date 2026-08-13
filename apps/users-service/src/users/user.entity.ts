@@ -27,7 +27,7 @@ export interface UserPreferences {
 export class User {
   @PrimaryColumn("uuid")
   @Index()
-  id: string;
+  id!: string;
 
   // // 3. KEYCLOAK ID: We keep this here to link the local profile to the Keycloak account.
   // @Column({ unique: true, select: false })
@@ -35,10 +35,10 @@ export class User {
   // keycloakId: string;
 
   @Column({ unique: true, select: false })
-  email: string;
+  email!: string;
 
   @Column({ unique: true })
-  username: string;
+  username!: string;
 
   @BeforeInsert()
   @BeforeUpdate()
@@ -49,48 +49,48 @@ export class User {
   }
 
   @Column({ nullable: true, length: 255 })
-  title: string;
+  title!: string;
 
   @Column({ nullable: true, length: 500 })
-  bio: string;
+  bio!: string;
 
   @Column({ type: "date", nullable: true })
-  birthdate: string;
+  birthdate!: string;
 
   // 5. Using the Enum type for the database column
   @Column({
     type: "enum",
     enum: Gender,
   })
-  gender: Gender;
+  gender!: Gender;
 
   // Location
   @Column({ type: "decimal", precision: 10, scale: 7, nullable: true })
-  latitude: number;
+  latitude!: number;
 
   @Column({ type: "decimal", precision: 10, scale: 7, nullable: true })
-  longitude: number;
+  longitude!: number;
 
   @Column({ nullable: true })
-  city: string;
+  city!: string;
 
   @Column({ nullable: true })
-  country: string;
+  country!: string;
 
   // Photos (array of filenames/URLs)
   @Column("text", { array: true, default: () => "'{}'" })
-  photos: string[];
+  photos!: string[];
 
   // Dating preferences
   @Column({ type: "jsonb", nullable: true })
-  preferences: UserPreferences;
+  preferences!: UserPreferences;
 
   @Column({ default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
-  createdAt: string;
+  createdAt!: string;
 
   @UpdateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
-  updatedAt: string;
+  updatedAt!: string;
 }
