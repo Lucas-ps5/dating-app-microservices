@@ -183,7 +183,7 @@ components:
         preferences:
           $ref: "#/components/schemas/UserPreferences"
 
-    DiscoverResult:
+    UsersListResponse:
       type: object
       properties:
         data:
@@ -193,12 +193,15 @@ components:
         total:
           type: integer
           example: 120
-        page:
-          type: integer
-          example: 1
-        limit:
-          type: integer
-          example: 20
+
+    CreationResponse:
+      type: object
+      properties:
+        newId:
+          type: string
+          format: uuid
+          description: Internal UUID of the newly created user
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
 
     ErrorResponse:
       type: object
@@ -233,14 +236,13 @@ components:
             error: "Not Found"
 
 paths:
-
-  /users/register:
+  /user/register:
     post:
       tags: [users]
       summary: Register a new user
       description: |
         Creates a Keycloak account then persists the local profile in PostgreSQL.
-        Called by the api-gateway on the public POST /api/users/register route.
+        Called by the api-gateway on the public POST /api/user/register route.
       operationId: registerUser
       requestBody:
         required: true
@@ -254,7 +256,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CreationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -264,7 +266,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /users/update:
+  /user/{id}/update:
     post:
       tags: [users]
       summary: Update profile (called by api-gateway on first login)
@@ -296,7 +298,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
-  /users/discover:
+  /user/discover:
     get:
       tags: [users]
       summary: Discover potential matches
@@ -341,9 +343,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DiscoverResult"
+                $ref: "#/components/schemas/UsersListResponse"
 
-  /users/{id}:
+  /user/{id}:
     get:
       tags: [users]
       summary: Get profile by internal UUID
@@ -397,7 +399,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /users/by-username/{username}:
+  /user/by-username/{username}:
     get:
       tags: [users]
       summary: Get profile by username
@@ -432,7 +434,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /users/by-keycloak/{keycloakId}/photos:
+  /user/by-keycloak/{keycloakId}/photos:
     post:
       tags: [users]
       summary: Link a photo URL to a user profile

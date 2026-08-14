@@ -3,6 +3,7 @@ export const KAFKA_TOPICS = {
   USER_CREATED: "user.created",
   USER_UPDATED: "user.updated",
   USER_DELETED: "user.deleted",
+  LIKE_CREATED: "like.created",
   MATCH_CREATED: "match.created",
   MESSAGE_SENT: "message.sent",
   IMAGE_UPLOADED: "image.uploaded",

@@ -1,34 +1,44 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { MatchesService } from './matches.service';
-import { CreateMatchDto } from './dto/create-match.dto';
-import { UpdateMatchDto } from './dto/update-match.dto';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
+import { MatchesService } from "./matches.service";
 
-@Controller('matches')
+@Controller("matches")
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) {}
 
   @Post()
-  create(@Body() createMatchDto: CreateMatchDto) {
-    return this.matchesService.create(createMatchDto);
+  create(@Body() body: { user1Id: string; user2Id: string }) {
+    return this.matchesService.createMatch(body.user1Id, body.user2Id);
   }
 
   @Get()
-  findAll() {
-    return this.matchesService.findAll();
+  findAll(@Query("page") page = "1", @Query("limit") limit = "20") {
+    return this.matchesService.findAll(+page, +limit);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.matchesService.findOne(+id);
+  @Get("user/:userId")
+  findMatchesForUser(
+    @Param("userId") userId: string,
+    @Query("page") page = "1",
+    @Query("limit") limit = "20",
+  ) {
+    return this.matchesService.findMatchesForUser(+page, +limit, userId);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateMatchDto: UpdateMatchDto) {
-    return this.matchesService.update(+id, updateMatchDto);
+  @Get(":id")
+  findOne(@Param("id") id: string) {
+    return this.matchesService.findOne(id);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.matchesService.remove(+id);
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.matchesService.remove(id);
   }
 }

@@ -4,8 +4,10 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import matchesConfiguration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
 import { Like } from "../likes/entities/like.entity";
+import { Match } from "../matches/entities/match.entity";
 import { KafkaModule } from "./kafka/kafka.module";
 import { LikesModule } from "../likes/likes.module";
+import { MatchesModule } from "../matches/matches.module";
 
 @Module({
   imports: [
@@ -24,13 +26,14 @@ import { LikesModule } from "../likes/likes.module";
         username: config.get<string>("database.username"),
         password: config.get<string>("database.password"),
         database: config.get<string>("database.name"),
-        entities: [Like],
+        entities: [Like, Match],
         synchronize: config.get<string>("nodeEnv") !== "production",
         logging: config.get<string>("nodeEnv") === "development",
       }),
     }),
     KafkaModule,
     LikesModule,
+    MatchesModule,
   ],
 })
 export class MatchesAppModule {}

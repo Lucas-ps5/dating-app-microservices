@@ -12,6 +12,7 @@ import { Gender, User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
+    CreationResponse,
   FieldToExtractCodes,
   KAFKA_TOPICS,
   calculateDistance,
@@ -105,7 +106,7 @@ export class UsersService implements OnModuleInit {
    * 2. Get the ID back
    * 3. Save user locally with that ID
    */
-  async register(dto: CreateUserDto): Promise<User> {
+  async register(dto: CreateUserDto): Promise<CreationResponse> {
     // 1. Create User in Keycloak
     let keycloakId: string;
     try {
@@ -147,7 +148,7 @@ export class UsersService implements OnModuleInit {
       this.logger.log(
         `Registered new user: keycloakId=${keycloakId}, email=${dto.email}`,
       );
-      return savedUser;
+      return { newId: savedUser.id };
     } catch (error) {
       // Rollback: If DB save fails, delete from Keycloak to stay consistent
       try {
@@ -350,12 +351,16 @@ export class UsersService implements OnModuleInit {
     if (ageMin) {
       const maxBirthdate = new Date();
       maxBirthdate.setFullYear(maxBirthdate.getFullYear() - ageMin);
-      qb.andWhere("user.birthdate <= :maxBirthdate", { maxBirthdate });
+      qb.andWhere("user.birthdate <= :maxBirthdate", {
+        maxBirthdate: maxBirthdate.toISOString().slice(0, 10),
+      });
     }
     if (ageMax) {
       const minBirthdate = new Date();
       minBirthdate.setFullYear(minBirthdate.getFullYear() - ageMax);
-      qb.andWhere("user.birthdate >= :minBirthdate", { minBirthdate });
+      qb.andWhere("user.birthdate >= :minBirthdate", {
+        minBirthdate: minBirthdate.toISOString().slice(0, 10),
+      });
     }
 
     const total = await qb.getCount();
