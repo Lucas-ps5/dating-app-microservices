@@ -12,7 +12,7 @@ import { Gender, User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
-    CreationResponse,
+  CreationResponse,
   FieldToExtractCodes,
   KAFKA_TOPICS,
   calculateDistance,
@@ -23,9 +23,9 @@ import { UserWithDistance } from "./interfaces/user-with-distance.interface";
 export interface PaginatedUsers {
   data: Partial<UserWithDistance>[];
   total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
 }
 
 const FIELD_MAP = {
@@ -183,17 +183,18 @@ export class UsersService implements OnModuleInit {
     }
 
     // Only update fields if they are provided in the DTO
-    if (dto.username) user.username = dto.username;
-    if (dto.title) user.title = dto.title;
-    if (dto.bio) user.bio = dto.bio;
-    if (dto.gender) user.gender = dto.gender;
-    if (dto.birthdate) user.birthdate = dto.birthdate;
-    if (dto.latitude) user.latitude = dto.latitude;
-    if (dto.longitude) user.longitude = dto.longitude;
-    if (dto.city) user.city = dto.city;
-    if (dto.country) user.country = dto.country;
-    if (dto.isActive) user.isActive = dto.isActive;
-    if (dto.preferences) user.preferences = dto.preferences;
+    if (dto.username !== undefined) user.username = dto.username;
+    if (dto.title !== undefined) user.title = dto.title;
+    if (dto.bio !== undefined) user.bio = dto.bio;
+    if (dto.gender !== undefined) user.gender = dto.gender;
+    if (dto.birthdate !== undefined) user.birthdate = dto.birthdate;
+    if (dto.latitude !== undefined) user.latitude = dto.latitude;
+    if (dto.longitude !== undefined) user.longitude = dto.longitude;
+    if (dto.city !== undefined) user.city = dto.city;
+    if (dto.country !== undefined) user.country = dto.country;
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    if (dto.preferences !== undefined) user.preferences = dto.preferences;
+    if (dto.photos !== undefined) user.photos = dto.photos;
 
     const updatedUser = await this.usersRepo.save(user);
     this.logger.log(`Updated profile for user ${id}`);
@@ -205,7 +206,7 @@ export class UsersService implements OnModuleInit {
     fieldToExtractCodes: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
-  ): Promise<Partial<User>> {
+  ): Promise<UserWithDistance> {
     const fieldsToSelect = FIELD_MAP[fieldToExtractCodes];
 
     const user = await this.usersRepo.findOne({
@@ -296,28 +297,11 @@ export class UsersService implements OnModuleInit {
       take: sanitizedLimit,
     });
 
-    const usersWithDistance: UserWithDistance[] = users.map((user) => {
-      if (
-        !user.latitude ||
-        !user.longitude ||
-        !currentUserLat ||
-        !currentUserLon
-      ) {
-        return user;
-      }
-
-      const distanceKm = calculateDistance(
-        currentUserLat,
-        currentUserLon,
-        user.latitude,
-        user.longitude,
-      );
-
-      return {
-        ...user,
-        distance: Math.round(distanceKm * 10) / 10,
-      };
-    });
+    const usersWithDistance: UserWithDistance[] = this.usersToUsersWithDistance(
+      users,
+      currentUserLat,
+      currentUserLon,
+    );
 
     const totalPages = Math.ceil(total / sanitizedLimit);
 
@@ -336,10 +320,10 @@ export class UsersService implements OnModuleInit {
     return this.usersRepo.save(user);
   }
 
-  async discover(
-    query: DiscoverQueryDto,
-  ): Promise<{ data: User[]; total: number }> {
+  async discover(query: DiscoverQueryDto): Promise<PaginatedUsers> {
     const { gender, ageMin, ageMax, page = 1, limit = 20 } = query;
+    const sanitizedPage = Math.max(1, Math.floor(page));
+    const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
 
     const qb = this.usersRepo
       .createQueryBuilder("user")
@@ -365,11 +349,30 @@ export class UsersService implements OnModuleInit {
 
     const total = await qb.getCount();
     const data = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+      .select([
+        "user.id",
+        "user.username",
+        "user.photos",
+        "user.title",
+        "user.birthdate",
+      ])
+      .skip((sanitizedPage - 1) * sanitizedLimit)
+      .take(sanitizedLimit)
       .getMany();
 
-    return { data, total };
+    const totalPages = Math.ceil(total / sanitizedLimit);
+
+    return {
+      data: this.usersToUsersWithDistance(
+        data,
+        query.currentUserLat,
+        query.currentUserLon,
+      ),
+      total,
+      page: sanitizedPage,
+      limit: sanitizedLimit,
+      totalPages,
+    };
   }
 
   async softDelete(id: string): Promise<void> {
@@ -379,5 +382,37 @@ export class UsersService implements OnModuleInit {
 
     await this.kafkaProducer.emit(KAFKA_TOPICS.USER_DELETED, { id });
     this.logger.log(`Soft-deleted user keycloakId=${id}`);
+  }
+
+  private usersToUsersWithDistance(
+    users: User[],
+    currentUserLat?: number,
+    currentUserLon?: number,
+  ): UserWithDistance[] {
+    return users.map((user) => {
+      if (
+        !user.latitude ||
+        !user.longitude ||
+        !currentUserLat ||
+        !currentUserLon
+      ) {
+        return user;
+      }
+
+      const distanceKm = calculateDistance(
+        currentUserLat,
+        currentUserLon,
+        user.latitude,
+        user.longitude,
+      );
+
+      user.latitude = undefined;
+      user.longitude = undefined;
+
+      return {
+        ...user,
+        distance: Math.round(distanceKm * 10) / 10,
+      };
+    });
   }
 }

@@ -23,7 +23,7 @@ export class UsersProxyService {
     path: string,
     options: {
       body?: unknown;
-      params?: Record<string, string>;
+      params?: Record<string, string | number | boolean | undefined>;
       user?: AuthenticatedUser;
     } = {},
   ): Promise<AxiosResponse<T>> {

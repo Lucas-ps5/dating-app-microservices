@@ -71,6 +71,7 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
@@ -142,6 +143,11 @@ export class UpdateUserDto {
   @Type(() => UserPreferencesDto)
   @ApiPropertyOptional({ type: UserPreferencesDto })
   preferences?: UserPreferencesDto;
+
+  @IsOptional()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String] })
+  photos?: string[];
 }
 
 export class DiscoverQueryDto {
@@ -175,4 +181,16 @@ export class DiscoverQueryDto {
   @Type(() => Number)
   @ApiPropertyOptional({ default: 20 })
   limit?: number = 20;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional()
+  currentUserLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional()
+  currentUserLon?: number;
 }

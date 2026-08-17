@@ -123,6 +123,17 @@ components:
           type: string
           format: date-time
 
+    UserWithDistance:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            distance:
+              type: number
+              format: float
+              description: Distance in kilometers from the current user (if provided)
+              example: 12.5
+
     CreateUserRequest:
       type: object
       required: [email, username, password]
@@ -182,6 +193,11 @@ components:
           type: boolean
         preferences:
           $ref: "#/components/schemas/UserPreferences"
+        photos:
+          type: array
+          items:
+            type: string
+            format: uri
 
     UsersListResponse:
       type: object
@@ -189,7 +205,7 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/User"
+            $ref: "#/components/schemas/UserWithDistance"
         total:
           type: integer
           example: 120
@@ -202,6 +218,26 @@ components:
           format: uuid
           description: Internal UUID of the newly created user
           example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+
+    PaginatedUsersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserWithDistance"
+        total:
+          type: integer
+          example: 120
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        totalPages:
+          type: integer
+          example: 6
 
     ErrorResponse:
       type: object
@@ -343,7 +379,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UsersListResponse"
+                $ref: "#/components/schemas/PaginatedUsersResponse"
 
   /user/{id}:
     get:
@@ -379,23 +415,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    delete:
-      tags: [users]
-      summary: Soft-delete a user
-      operationId: softDeleteUser
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "204":
-          description: User soft-deleted
+                $ref: "#/components/schemas/UserWithDistance"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -412,6 +432,8 @@ paths:
             type: string
         - name: fieldToExtractCodes
           in: query
+          required: false
+          description: Comma-separated codes controlling which fields are returned
           schema:
             type: string
         - name: currentUserLat
@@ -430,7 +452,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/UserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [users]
+      summary: Soft-delete a user
+      operationId: softDeleteUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: User soft-deleted
         "404":
           $ref: "#/components/responses/NotFound"
 

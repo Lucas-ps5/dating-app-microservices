@@ -28,6 +28,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
 import { UsersProxyService } from "./users-proxy.service";
 import { Public } from "../auth/decorators/public.decorator";
+import { FieldToExtractCodes } from "@app/common/types/types";
 
 @ApiTags("users")
 @ApiBearerAuth()
@@ -42,25 +43,58 @@ export class UsersController {
   @Post("register")
   @ApiOperation({ summary: "Register a new user" })
   async register(@Body() body: Record<string, unknown>) {
-    return this.usersProxy.forward("post", "/register", { body });
+    return this.usersProxy.forward("post", "/user/register", { body });
   }
 
   @Get("discover")
   @ApiOperation({ summary: "Discover potential matches" })
   async discover(@Query() query: Record<string, string>) {
-    const res = await this.usersProxy.forward("get", "/discover", {
+    const res = await this.usersProxy.forward("get", "/user/discover", {
       params: { ...query },
     });
     return res.data;
   }
 
+  // @Get("all")
+  // @ApiOperation({ summary: "Get all users" })
+  // async getAllUsers(@Query() query: Record<string, string>) {
+  //   const res = await this.usersProxy.forward("get", "/all", {
+  //     params: { ...query },
+  //   });
+  //   return res.data;
+  // }
+
   @Get(":id")
   @ApiOperation({ summary: "Get user profile by ID" })
   async getUserById(
     @Param("id") id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @Query("fieldToExtractCodes")
+    fieldToExtractCodes: FieldToExtractCodes,
+    @Query("currentUserLat") currentUserLat?: number,
+    @Query("currentUserLon") currentUserLon?: number,
   ) {
-    const res = await this.usersProxy.forward("get", `/${id}`, { user });
+    const res = await this.usersProxy.forward("get", `/user/${id}`, {
+      params: { fieldToExtractCodes, currentUserLat, currentUserLon },
+    });
+    return res.data;
+  }
+
+  @Get("by-username/:username")
+  @ApiOperation({ summary: "Get user profile by username" })
+  async getUserByUsername(
+    @Param("username") username: string,
+    @Query("fieldToExtractCodes")
+    fieldToExtractCodes: FieldToExtractCodes,
+    @Query("currentUserLat") currentUserLat?: number,
+    @Query("currentUserLon") currentUserLon?: number,
+  ) {
+    const res = await this.usersProxy.forward(
+      "get",
+      `/user/by-username/${username}`,
+      {
+        params: { fieldToExtractCodes, currentUserLat, currentUserLon },
+      },
+    );
     return res.data;
   }
 
@@ -72,7 +106,9 @@ export class UsersController {
     @Param("id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const res = await this.usersProxy.forward("put", `/${id}/update`, { body });
+    const res = await this.usersProxy.forward("put", `/user/${id}/update`, {
+      body,
+    });
     return res.data;
   }
 
@@ -92,7 +128,7 @@ export class UsersController {
   ) {
     const res = await this.usersProxy.forward(
       "post",
-      `/by-keycloak/${user.id}/photos`,
+      `/user/by-keycloak/${user.id}/photos`,
       {
         body: {
           filename: file.filename,
@@ -109,7 +145,7 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete a user (admin)" })
   async deleteUser(@Param("id") id: string) {
-    const res = await this.usersProxy.forward("delete", `/${id}`);
+    const res = await this.usersProxy.forward("delete", `/user/${id}`);
     return res.data;
   }
 }

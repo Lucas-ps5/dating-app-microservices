@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { KAFKA_TOPICS } from "@app/common";
+import { CountResponse, KAFKA_TOPICS } from "@app/common";
 import { MatchesService } from "../matches/matches.service";
 import { CreateLikeDto } from "./dto/create-like.dto";
 import { Like } from "./entities/like.entity";
@@ -79,6 +79,37 @@ export class LikesService {
       );
       throw error;
     }
+  }
+
+  async dislike(userId?: string, receiverId?: string): Promise<void> {
+    if (!userId || !receiverId) {
+      throw new BadRequestException("Both user and receiver ids are required");
+    }
+
+    const like = await this.likeRepo.findOneBy({
+      senderId: userId,
+      receiverId,
+    });
+
+    if (!like) {
+      throw new NotFoundException("Like not found");
+    }
+
+    await this.likeRepo.remove(like);
+    const reciprocalLike = await this.likeRepo.findOne({
+      where: {
+        senderId: like.receiverId,
+        receiverId: like.senderId,
+      },
+    });
+
+    if (reciprocalLike) {
+      await this.matchesService.removeMatch(like.senderId, like.receiverId);
+    }
+
+    this.logger.log(
+      `Like removed for user ${userId} and receiver ${receiverId}`,
+    );
   }
 
   private async maybeCreateMutualMatch(like: Like): Promise<void> {
@@ -201,8 +232,13 @@ export class LikesService {
     return this.likeRepo.save(like);
   }
 
-  async remove(id: string): Promise<void> {
-    const like = await this.findOne(id);
-    await this.likeRepo.remove(like);
+  async countMySentLikes(userId: string): Promise<CountResponse> {
+    const count = await this.likeRepo.countBy({ senderId: userId });
+    return { count };
+  }
+
+  async countMyReceivedLikes(userId: string): Promise<CountResponse> {
+    const count = await this.likeRepo.countBy({ receiverId: userId });
+    return { count };
   }
 }

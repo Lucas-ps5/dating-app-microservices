@@ -58,6 +58,23 @@ export class UsersController {
   }
 
   @Get("by-username/:username")
+  @ApiOperation({ summary: "Get user profile by username" })
+  async getUserByUsername(
+    @Param("username") username: string,
+    @Query("fieldToExtractCodes")
+    fieldToExtractCodes: FieldToExtractCodes,
+    @Query("currentUserLat") currentUserLat?: number,
+    @Query("currentUserLon") currentUserLon?: number,
+  ) {
+    return this.usersService.findByUsername(
+      username,
+      fieldToExtractCodes,
+      currentUserLat,
+      currentUserLon,
+    );
+  }
+
+  @Get("by-username/:username")
   @ApiOperation({ summary: "Get profile by username" })
   async getByUsername(
     @Param("username") username: string,

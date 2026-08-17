@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -6,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { KAFKA_TOPICS } from "@app/common";
+import { CountResponse, KAFKA_TOPICS } from "@app/common";
 import { KafkaProducerService } from "../src/kafka/kafka-producer.service";
 import { Match } from "./entities/match.entity";
 
@@ -53,6 +54,26 @@ export class MatchesService {
       `Created match ${savedMatch.id} between ${uid1} and ${uid2}`,
     );
     return savedMatch;
+  }
+
+  async removeMatch(userId?: string, receiverId?: string): Promise<void> {
+    if (!userId || !receiverId) {
+      throw new BadRequestException("Both user and receiver ids are required");
+    }
+
+    const [uid1, uid2] = [userId, receiverId].sort();
+
+    const match = await this.matchRepo.findOne({
+      where: { user1Id: uid1, user2Id: uid2 },
+    });
+
+    if (!match) {
+      throw new NotFoundException("Match not found");
+    }
+
+    await this.matchRepo.remove(match);
+
+    this.logger.log(`Match removed for users ${userId} and ${receiverId}`);
   }
 
   async findAll(page = 1, limit = 20): Promise<PaginatedMatches> {
@@ -111,5 +132,12 @@ export class MatchesService {
   async remove(id: string): Promise<void> {
     const match = await this.findOne(id);
     await this.matchRepo.remove(match);
+  }
+
+  async countMatchesForUser(userId: string): Promise<CountResponse> {
+    const count = await this.matchRepo.count({
+      where: [{ user1Id: userId }, { user2Id: userId }],
+    });
+    return { count };
   }
 }
