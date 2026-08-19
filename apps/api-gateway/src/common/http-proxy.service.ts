@@ -1,8 +1,20 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { HttpException, Injectable, Logger } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { ConfigService } from "@nestjs/config";
 import { firstValueFrom } from "rxjs";
-import type { AxiosRequestConfig, AxiosResponse } from "axios";
+import {
+  isAxiosError,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+} from "axios";
+
+export type ProxyHttpMethod = "get" | "post" | "put" | "patch" | "delete";
+
+export interface ProxyOptions {
+  body?: unknown;
+  params?: Record<string, unknown>;
+  headers?: Record<string, string>;
+}
 
 @Injectable()
 export class HttpProxyService {
@@ -14,14 +26,10 @@ export class HttpProxyService {
   ) {}
 
   async proxy<T>(
-    method: "get" | "post" | "put" | "patch" | "delete",
+    method: ProxyHttpMethod,
     serviceUrl: string,
     path: string,
-    options: {
-      body?: unknown;
-      params?: Record<string, string>;
-      headers?: Record<string, string>;
-    } = {},
+    options: ProxyOptions = {},
   ): Promise<AxiosResponse<T>> {
     const url = `${serviceUrl}${path}`;
     const config: AxiosRequestConfig = {
@@ -29,7 +37,7 @@ export class HttpProxyService {
       headers: options.headers,
     };
 
-    this.logger.debug(`Proxying ${method.toUpperCase()} → ${url}`);
+    this.logger.debug(`Proxying ${method.toUpperCase()} -> ${url}`);
 
     try {
       switch (method) {
@@ -50,8 +58,14 @@ export class HttpProxyService {
         case "delete":
           return await firstValueFrom(this.httpService.delete<T>(url, config));
       }
-    } catch (error) {
-      this.logger.error(`Proxy error for ${url}: ${error.message}`);
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        this.logger.error(`Proxy error for ${url}: ${error.response.status}`);
+        throw new HttpException(error.response.data, error.response.status);
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Proxy error for ${url}: ${message}`);
       throw error;
     }
   }
