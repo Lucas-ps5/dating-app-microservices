@@ -41,4 +41,9 @@ export class MatchesController {
   remove(@Param("id") id: string) {
     return this.matchesService.remove(id);
   }
+
+  @Get("/count-my-matches")
+  countMyMatches(@Query("userId") userId: string) {
+    return this.matchesService.countMyMatches(userId);
+  }
 }

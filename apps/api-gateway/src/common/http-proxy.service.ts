@@ -1,6 +1,5 @@
 import { HttpException, Injectable, Logger } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
-import { ConfigService } from "@nestjs/config";
 import { firstValueFrom } from "rxjs";
 import {
   isAxiosError,
@@ -20,10 +19,7 @@ export interface ProxyOptions {
 export class HttpProxyService {
   private readonly logger = new Logger(HttpProxyService.name);
 
-  constructor(
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly httpService: HttpService) {}
 
   async proxy<T>(
     method: ProxyHttpMethod,

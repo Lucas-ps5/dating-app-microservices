@@ -51,12 +51,6 @@ export class GenericProxyController {
           "http://localhost:3001/api",
         targetPrefix: "user",
       },
-      media: {
-        url:
-          configService.get<string>("services.mediaUrl") ??
-          "http://localhost:3003/api",
-        targetPrefix: "media",
-      },
       chat: {
         url:
           configService.get<string>("services.chatUrl") ??
@@ -82,8 +76,6 @@ export class GenericProxyController {
   @All("user/*path")
   @All("users")
   @All("users/*path")
-  @All("media")
-  @All("media/*path")
   @All("chat")
   @All("chat/*path")
   @All("matches")

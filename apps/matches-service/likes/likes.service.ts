@@ -1,12 +1,13 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { CountResponse, KAFKA_TOPICS } from "@app/common";
+import { CountResponse, CreationResponse, KAFKA_TOPICS } from "@app/common";
 import { MatchesService } from "../matches/matches.service";
 import { CreateLikeDto } from "./dto/create-like.dto";
 import { Like } from "./entities/like.entity";
@@ -31,7 +32,10 @@ export class LikesService {
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
-  async create(payload: CreateLikeDto, userId?: string): Promise<Like | null> {
+  async create(
+    payload: CreateLikeDto,
+    userId?: string,
+  ): Promise<CreationResponse> {
     if (!userId) {
       throw new BadRequestException("Authenticated user id is required");
     }
@@ -50,7 +54,7 @@ export class LikesService {
         this.logger.log(
           `Duplicate like ignored for sender ${userId} and receiver ${payload.receiverId}`,
         );
-        return null;
+        throw new ConflictException("Like already exists");
       }
 
       const newLike = this.likeRepo.create({
@@ -71,7 +75,7 @@ export class LikesService {
 
       await this.maybeCreateMutualMatch(savedLike);
 
-      return savedLike;
+      return { newId: savedLike.id };
     } catch (error) {
       this.logger.error(
         `Failed to save like for receiver ${payload.receiverId}`,
@@ -131,7 +135,7 @@ export class LikesService {
       );
 
       this.logger.log(
-        `Mutual like detected between ${like.senderId} and ${like.receiverId}; created match ${match.id}`,
+        `Mutual like detected between ${like.senderId} and ${like.receiverId}; created match ${match.newId}`,
       );
     } catch (error) {
       if (error instanceof Error && error.name !== "ConflictException") {

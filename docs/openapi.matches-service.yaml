@@ -1,0 +1,664 @@
+openapi: 3.0.3
+
+info:
+  title: HMeet – Matches Service
+  description: |
+    Internal HTTP API that manages **likes** (swipes) and **matches** (mutual likes) for the HMeet dating app.
+    **Not exposed publicly** — all endpoints are called exclusively by the api-gateway over the internal Docker network.
+
+    **Authentication**: Caller identity is forwarded via the `x-user-id` header (extracted from the Keycloak JWT by the api-gateway).
+    No Bearer token is required at this layer.
+
+    **Database**: PostgreSQL (`hmeet_matches` — port 5435 in development)
+
+    **Async events (Kafka)**:
+    | Event | Topic | Produced when |
+    |---|---|---|
+    | `like.created` | `like-events` | A new like/super-like/pass is recorded |
+    | `match.created` | `match-events` | A mutual like triggers a new match |
+
+    **Match creation logic**:
+    When a like is created (`POST /api/likes/create`), the service checks for a reciprocal like.
+    If one exists, a match is automatically created and a `match.created` event is emitted.
+    Duplicate likes are silently ignored (idempotent).
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3004/api
+    description: Local development (direct HTTP access)
+  - url: http://matches-service:3004/api
+    description: Internal Docker network
+
+tags:
+  - name: matches
+    description: Mutual-like matches between two users
+  - name: likes
+    description: Individual swipe actions (like, super-like, pass)
+
+components:
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Page number (1-indexed)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Items per page (max 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+    UserIdHeader:
+      name: x-user-id
+      in: header
+      required: false
+      description: Authenticated user UUID — injected by the api-gateway from the JWT claim
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # ------------------------------------------------------------------
+    # Match
+    # ------------------------------------------------------------------
+    Match:
+      type: object
+      description: A mutual match created when two users have liked each other
+      required: [id, user1Id, user2Id, isActive, matchedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique match identifier
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        user1Id:
+          type: string
+          format: uuid
+          description: UUID of the first user (lower UUID stored here for uniqueness)
+          example: "11111111-1111-1111-1111-111111111111"
+        user2Id:
+          type: string
+          format: uuid
+          description: UUID of the second user
+          example: "22222222-2222-2222-2222-222222222222"
+        isActive:
+          type: boolean
+          description: Whether the match is still active
+          default: true
+        matchedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the match was created
+          example: "2026-08-19T20:00:00.000Z"
+
+    PaginatedMatches:
+      type: object
+      required: [data, total, page, limit, totalPages]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Match"
+        total:
+          type: integer
+          description: Total number of matches across all pages
+          example: 42
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          description: Number of items per page
+          example: 20
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 3
+
+    CreateMatchRequest:
+      type: object
+      required: [user1Id, user2Id]
+      properties:
+        user1Id:
+          type: string
+          format: uuid
+          description: UUID of the first user
+          example: "11111111-1111-1111-1111-111111111111"
+        user2Id:
+          type: string
+          format: uuid
+          description: UUID of the second user
+          example: "22222222-2222-2222-2222-222222222222"
+
+    # ------------------------------------------------------------------
+    # Like
+    # ------------------------------------------------------------------
+    SwipeType:
+      type: string
+      enum: [LIKE, SUPER_LIKE, PASS]
+      description: |
+        Type of swipe action:
+        - `LIKE` — standard like
+        - `SUPER_LIKE` — super like (highlighted to the receiver)
+        - `PASS` — pass/skip
+
+    Like:
+      type: object
+      description: A swipe action from one user towards another
+      required: [id, senderId, receiverId, type, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique like identifier
+          example: "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        senderId:
+          type: string
+          format: uuid
+          description: UUID of the user who swiped
+          example: "11111111-1111-1111-1111-111111111111"
+        receiverId:
+          type: string
+          format: uuid
+          description: UUID of the user who was swiped on
+          example: "22222222-2222-2222-2222-222222222222"
+        type:
+          $ref: "#/components/schemas/SwipeType"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the swipe was recorded
+          example: "2026-08-19T20:00:00.000Z"
+
+    CreateLikeRequest:
+      type: object
+      required: [receiverId, type]
+      properties:
+        receiverId:
+          type: string
+          format: uuid
+          description: UUID of the user being swiped on
+          example: "22222222-2222-2222-2222-222222222222"
+        type:
+          $ref: "#/components/schemas/SwipeType"
+
+    PaginatedLikes:
+      type: object
+      required: [data, total, page, limit, totalPages]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Like"
+        total:
+          type: integer
+          description: Total number of likes across all pages
+          example: 87
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        totalPages:
+          type: integer
+          example: 5
+
+    CountResponse:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          description: Total count
+          example: 14
+
+    CreationResponse:
+      type: object
+      required: [newId]
+      properties:
+        newId:
+          type: string
+          description: ID of the created resource
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    # ------------------------------------------------------------------
+    # Errors
+    # ------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          example: "Match already exists"
+        error:
+          type: string
+          example: "Bad Request"
+
+# ---------------------------------------------------------------------------
+# Paths — Matches
+# ---------------------------------------------------------------------------
+paths:
+  /matches:
+    post:
+      tags: [matches]
+      operationId: createMatch
+      summary: Create a match between two users
+      description: |
+        Manually create a match between two users. The pair is stored with the lower UUID
+        as `user1Id` to enforce uniqueness. Emits a `match.created` Kafka event.
+
+        > **Note**: In normal app flow, matches are created automatically by `POST /likes/create`
+        > when a mutual like is detected — not by calling this endpoint directly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMatchRequest"
+      responses:
+        "201":
+          description: Match created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreationResponse"
+        "409":
+          description: Match already exists between these two users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                statusCode: 409
+                message: "Match already exists"
+                error: "Conflict"
+
+    get:
+      tags: [matches]
+      operationId: listAllMatches
+      summary: List all matches (paginated)
+      description: Returns all matches in the system ordered by `matchedAt` descending. Intended for admin/internal use.
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated list of all matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedMatches"
+
+  /matches/user/{userId}:
+    get:
+      tags: [matches]
+      operationId: listMatchesForUser
+      summary: List all matches for a specific user (paginated)
+      description: Returns all active matches where the given user appears as either `user1Id` or `user2Id`, ordered by `matchedAt` descending.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the user whose matches to retrieve
+          schema:
+            type: string
+            format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated list of matches for the user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedMatches"
+
+  /matches/{id}:
+    get:
+      tags: [matches]
+      operationId: getMatch
+      summary: Get a single match by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the match
+          schema:
+            type: string
+            format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      responses:
+        "200":
+          description: The requested match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+        "404":
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                statusCode: 404
+                message: "Match with id a1b2c3d4-e5f6-7890-abcd-ef1234567890 not found"
+                error: "Not Found"
+
+    delete:
+      tags: [matches]
+      operationId: deleteMatch
+      summary: Delete a match by ID
+      description: Permanently removes the match record. Does not remove the underlying likes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the match to delete
+          schema:
+            type: string
+            format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      responses:
+        "200":
+          description: Match deleted (no body)
+        "404":
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+# ---------------------------------------------------------------------------
+# Paths — Likes
+# ---------------------------------------------------------------------------
+
+  /likes/create:
+    post:
+      tags: [likes]
+      operationId: createLike
+      summary: Record a swipe action (like / super-like / pass)
+      description: |
+        Records a swipe from the authenticated user towards `receiverId`.
+
+        **Side effects**:
+        - Emits a `like.created` Kafka event.
+        - If a reciprocal like already exists, automatically creates a match and emits `match.created`.
+        - Duplicate likes (same sender + receiver) are silently ignored and `null` is returned.
+
+        The acting user's ID is resolved from the `x-user-id` header (or the `userId` query param as a fallback).
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: Fallback user ID (prefer the x-user-id header when calling via the gateway)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLikeRequest"
+            examples:
+              like:
+                summary: Standard like
+                value:
+                  receiverId: "22222222-2222-2222-2222-222222222222"
+                  type: "LIKE"
+              superLike:
+                summary: Super like
+                value:
+                  receiverId: "33333333-3333-3333-3333-333333333333"
+                  type: "SUPER_LIKE"
+              pass:
+                summary: Pass
+                value:
+                  receiverId: "44444444-4444-4444-4444-444444444444"
+                  type: "PASS"
+      responses:
+        "201":
+          description: Like recorded (or null if duplicate — idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreationResponse"
+              example:
+                newId: "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        "400":
+          description: Missing user ID, or user tried to like themselves
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                noUserId:
+                  summary: Missing user ID
+                  value:
+                    statusCode: 400
+                    message: "Authenticated user id is required"
+                    error: "Bad Request"
+                selfLike:
+                  summary: Self-like attempt
+                  value:
+                    statusCode: 400
+                    message: "You cannot like yourself"
+                    error: "Bad Request"
+
+  /likes/dislike:
+    post:
+      tags: [likes]
+      operationId: dislike
+      summary: Remove a like (un-swipe / dislike)
+      description: |
+        Removes an existing like from the authenticated user towards `receiverId`.
+        If a match exists between the two users (due to a reciprocal like), the match is also deleted.
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: Fallback user ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLikeRequest"
+            example:
+              receiverId: "22222222-2222-2222-2222-222222222222"
+              type: "LIKE"
+      responses:
+        "201":
+          description: Like removed successfully (no body)
+        "400":
+          description: Both user IDs are required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Like not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                statusCode: 404
+                message: "Like not found"
+                error: "Not Found"
+
+  /likes/all:
+    get:
+      tags: [likes]
+      operationId: listAllLikes
+      summary: List all likes (paginated, admin/internal)
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated list of all likes ordered by createdAt descending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLikes"
+
+  /likes/{userId}/received:
+    get:
+      tags: [likes]
+      operationId: listReceivedLikes
+      summary: List likes received by a user (paginated)
+      description: Returns all likes where `receiverId` matches the given `userId`, ordered by `createdAt` descending.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the user
+          schema:
+            type: string
+            format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated list of received likes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLikes"
+
+  /likes/{userId}/sent:
+    get:
+      tags: [likes]
+      operationId: listSentLikes
+      summary: List likes sent by a user (paginated)
+      description: Returns all likes where `senderId` matches the given `userId`, ordered by `createdAt` descending.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the user
+          schema:
+            type: string
+            format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated list of sent likes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLikes"
+
+  /likes/{userId}/received/count:
+    get:
+      tags: [likes]
+      operationId: countReceivedLikes
+      summary: Count total likes received by a user
+      parameters:
+        - $ref: "#/components/parameters/UserIdHeader"
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the user
+          schema:
+            type: string
+            format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+      responses:
+        "200":
+          description: Total count of received likes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountResponse"
+              example:
+                count: 14
+
+  /likes/{userId}/sent/count:
+    get:
+      tags: [likes]
+      operationId: countSentLikes
+      summary: Count total likes sent by a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the user
+          schema:
+            type: string
+            format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+      responses:
+        "200":
+          description: Total count of sent likes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountResponse"
+              example:
+                count: 7
+
+  /likes/{id}:
+    get:
+      tags: [likes]
+      operationId: getLike
+      summary: Get a single like by ID
+      description: |
+        > **Route collision note**: This wildcard route sits below the `/likes/{userId}/received`
+        > and `/likes/{userId}/sent` routes. NestJS resolves more-specific static path segments first,
+        > so those routes always take precedence over this one.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the like
+          schema:
+            type: string
+            format: uuid
+          example: "cccccccc-cccc-cccc-cccc-cccccccccccc"
+      responses:
+        "200":
+          description: The requested like
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Like"
+        "404":
+          description: Like not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                statusCode: 404
+                message: "Like with id cccccccc-cccc-cccc-cccc-cccccccccccc not found"
+                error: "Not Found"

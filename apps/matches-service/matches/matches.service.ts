@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { CountResponse, KAFKA_TOPICS } from "@app/common";
+import { CountResponse, CreationResponse, KAFKA_TOPICS } from "@app/common";
 import { KafkaProducerService } from "../src/kafka/kafka-producer.service";
 import { Match } from "./entities/match.entity";
 
@@ -29,7 +29,10 @@ export class MatchesService {
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
-  async createMatch(user1Id: string, user2Id: string): Promise<Match> {
+  async createMatch(
+    user1Id: string,
+    user2Id: string,
+  ): Promise<CreationResponse> {
     const [uid1, uid2] = [user1Id, user2Id].sort();
 
     const existing = await this.matchRepo.findOne({
@@ -53,7 +56,7 @@ export class MatchesService {
     this.logger.log(
       `Created match ${savedMatch.id} between ${uid1} and ${uid2}`,
     );
-    return savedMatch;
+    return { newId: savedMatch.id };
   }
 
   async removeMatch(userId?: string, receiverId?: string): Promise<void> {
