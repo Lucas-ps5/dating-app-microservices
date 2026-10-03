@@ -89,7 +89,7 @@ export class MediaController {
     return res.data;
   }
 
-  @Delete("images/:objectName(*)")
+  @Delete("images/*objectName")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete an image from MinIO" })
   async deleteImage(

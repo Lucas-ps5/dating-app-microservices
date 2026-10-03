@@ -1,0 +1,328 @@
+﻿openapi: 3.0.3
+
+info:
+  title: HMeet – Chat Service
+  description: |
+    Internal HTTP + WebSocket API for matches, conversations and real-time messaging.
+    **Not exposed publicly** — the HTTP API is called only by the api-gateway over the internal Docker network.
+
+    **Authentication (HTTP)**: Caller identity is forwarded via the `x-user-id` header
+    (extracted from the Keycloak JWT by the api-gateway). No Bearer token is required here.
+
+    **Authentication (WebSocket)**: Clients connect directly to this service on the `/chat` namespace
+    and authenticate via `socket.handshake.auth = { userId: "<uuid>" }`.
+
+    **Database**: PostgreSQL (`hmeet_chat` — port 5434 in development)
+
+    **Async events (Kafka)**:
+    | Event | Topic | Produced when |
+    |---|---|---|
+    | `match.created` | `match-events` | A new match is created |
+    | `message.sent` | `message-events` | A message is persisted |
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3002/api
+    description: Local development (direct HTTP access)
+  - url: http://chat-service:3002/api
+    description: Internal Docker network
+
+tags:
+  - name: matches
+    description: Match creation and listing
+  - name: conversations
+    description: Conversation and message history
+  - name: websocket
+    description: Real-time Socket.IO events (informational)
+
+components:
+  schemas:
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "b1c2d3e4-0002-4a1b-c234-000000000002"
+        user1Id:
+          type: string
+          format: uuid
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        user2Id:
+          type: string
+          format: uuid
+          example: "c4d5e6f7-0003-4b2c-d345-000000000003"
+        isActive:
+          type: boolean
+          default: true
+        matchedAt:
+          type: string
+          format: date-time
+          example: "2025-07-01T08:00:00Z"
+
+    MessageType:
+      type: string
+      enum: [text, image, gif]
+      default: text
+      example: text
+
+    MessageStatus:
+      type: string
+      enum: [UNREAD, READ]
+      default: UNREAD
+      example: UNREAD
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "d7e8f9a0-0004-4c3d-e456-000000000004"
+        conversationId:
+          type: string
+          format: uuid
+          example: "b1c2d3e4-0002-4a1b-c234-000000000002"
+        senderId:
+          type: string
+          format: uuid
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        receiverId:
+          type: string
+          format: uuid
+          example: "c4d5e6f7-0003-4b2c-d345-000000000003"
+        content:
+          type: string
+          example: "Hey! How's it going?"
+        type:
+          $ref: "#/components/schemas/MessageType"
+        status:
+          $ref: "#/components/schemas/MessageStatus"
+        sentAt:
+          type: string
+          format: date-time
+          example: "2025-07-10T14:00:00Z"
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    Conversation:
+      type: object
+      description: A match enriched with the latest message
+      properties:
+        user1Id:
+          type: string
+          format: uuid
+          description: Authenticated caller's ID (injected by gateway)
+        user2Id:
+          type: string
+          format: uuid
+          description: Target user's ID
+        lastMessagePreview:
+          type: string
+          example: "Hey! How's it going?"
+        lastMessageSentAt:
+          type: string
+          format: date-time
+          example: "2025-07-10T14:00:00Z"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-07-01T08:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-07-01T08:00:00Z"
+
+    CreateMatchRequest:
+      type: object
+      required: [user1Id, user2Id]
+      properties:
+        user1Id:
+          type: string
+          format: uuid
+          description: Authenticated caller's ID (injected by gateway)
+        user2Id:
+          type: string
+          format: uuid
+          description: Target user's ID
+
+    SendMessageRequest:
+      type: object
+      required: [receiverId, content]
+      properties:
+        receiverId:
+          type: string
+          format: uuid
+          description: Target user's ID
+        content:
+          type: string
+          example: "Hey! How's it going?"
+        type:
+          $ref: "#/components/schemas/MessageType"
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Caller is not a participant in this match
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+paths:
+
+  # ── Conversations / Messages ───────────────────────────────────────────────
+
+  /my/conversations:
+    get:
+      tags: [conversations]
+      summary: List conversations (matches + last message)
+      description: Returns all matches for the user, each enriched with the most recent message.
+      operationId: getMyConversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+
+  /my/conversations/{conversationId}:
+    get:
+      tags: [conversations]
+      summary: Get conversation by ID
+      operationId: getConversationById
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Conversation found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /conversations/send-message:
+    post:
+      tags: [conversations]
+      summary: Send a message
+      operationId: sendMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /my/conversations/{conversationId}/read:
+    put:
+      tags: [conversations]
+      summary: Mark messages as read
+      operationId: markMessagesAsRead
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Messages marked as read
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /my/unread/count:
+    get:
+      tags: [conversations]
+      summary: Get total unread messages count for the authenticated user
+      operationId: getMyUnreadMessagesCount
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountResponse"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WebSocket Contract — Socket.IO /chat namespace
+# ─────────────────────────────────────────────────────────────────────────────
+# Server  : ws://localhost:3002   (chat-service)
+# Namespace: /chat
+#
+# Connection auth:
+#   socket.handshake.auth = { userId: "<uuid>" }
+#   Clients without userId are disconnected immediately.
+#
+# CLIENT → SERVER events:
+#   ┌──────────────┬─────────────────────────────────────────────────────────────┐
+#   │ Event        │ Payload                                                     │
+#   ├──────────────┼─────────────────────────────────────────────────────────────┤
+#   │ join-match   │ matchId: string                                             │
+#   │ message      │ { matchId: string, content: string, type?: MessageType }    │
+#   │ typing       │ matchId: string                                             │
+#   └──────────────┴─────────────────────────────────────────────────────────────┘
+#
+# SERVER → CLIENT events:
+#   ┌──────────────┬─────────────────────────────────────────────────────────────┐
+#   │ Event        │ Payload                                                     │
+#   ├──────────────┼─────────────────────────────────────────────────────────────┤
+#   │ joined       │ { matchId: string }                                         │
+#   │ new-message  │ Message object (see schema)                                 │
+#   │ typing       │ { userId: string, matchId: string }                        │
+#   │ error        │ { message: string }                                         │
+#   └──────────────┴─────────────────────────────────────────────────────────────┘
+# ─────────────────────────────────────────────────────────────────────────────

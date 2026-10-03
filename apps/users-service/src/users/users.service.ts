@@ -7,24 +7,25 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, QueryFailedError } from "typeorm";
+import { ConfigService } from "@nestjs/config";
 import { Gender, User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
-  AuthenticatedUser,
+  CreationResponse,
   FieldToExtractCodes,
   KAFKA_TOPICS,
   calculateDistance,
 } from "@app/common";
-import KeycloakAdminClient from "keycloak-admin";
+import KcAdminClient from "@keycloak/keycloak-admin-client";
 import { UserWithDistance } from "./interfaces/user-with-distance.interface";
 
 export interface PaginatedUsers {
   data: Partial<UserWithDistance>[];
   total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
 }
 
 const FIELD_MAP = {
@@ -55,30 +56,44 @@ const FIELD_MAP = {
 @Injectable()
 export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
-  private readonly kcAdminClient: KeycloakAdminClient;
+  private readonly kcAdminClient: KcAdminClient;
 
   constructor(
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
     private readonly kafkaProducer: KafkaProducerService,
+    private readonly configService: ConfigService,
   ) {
-    // 2. Initialize Keycloak Admin Client
-    // Ideally, move these URLs to a .env file or ConfigService
-    this.kcAdminClient = new KeycloakAdminClient({
-      baseUrl: process.env.KEYCLOAK_URL || "http://localhost:8080",
-      realmName: process.env.KEYCLOAK_REALM || "master",
+    this.kcAdminClient = new KcAdminClient({
+      baseUrl:
+        this.configService.get<string>("KEYCLOAK_URL") ??
+        "http://localhost:8080",
+      realmName:
+        this.configService.get<string>("KEYCLOAK_ADMIN_REALM") ?? "master",
     });
   }
 
-  // 3. Authenticate with Keycloak when the service starts
+  /** Authenticate (or re-authenticate) the admin client against Keycloak. */
+  private async authenticate(): Promise<void> {
+    await this.kcAdminClient.auth({
+      username:
+        this.configService.get<string>("KEYCLOAK_ADMIN_USERNAME") ?? "admin",
+      password:
+        this.configService.get<string>("KEYCLOAK_ADMIN_PASSWORD") ?? "admin",
+      grantType: "password",
+      clientId:
+        this.configService.get<string>("KEYCLOAK_ADMIN_CLIENT_ID") ??
+        "admin-cli",
+    });
+
+    this.kcAdminClient.setConfig({
+      realmName: this.configService.get<string>("KEYCLOAK_REALM") ?? "hmeet",
+    });
+  }
+
   async onModuleInit() {
     try {
-      await this.kcAdminClient.auth({
-        username: process.env.KEYCLOAK_ADMIN_USERNAME || "admin",
-        password: process.env.KEYCLOAK_ADMIN_PASSWORD || "admin",
-        grantType: "client_credentials",
-        clientId: process.env.KEYCLOAK_ADMIN_CLIENT_ID || "admin-cli",
-      });
+      await this.authenticate();
       this.logger.log("Successfully connected to Keycloak Admin API");
     } catch (error) {
       this.logger.error("Failed to connect to Keycloak Admin API", error);
@@ -91,10 +106,11 @@ export class UsersService implements OnModuleInit {
    * 2. Get the ID back
    * 3. Save user locally with that ID
    */
-  async register(dto: CreateUserDto): Promise<User> {
+  async register(dto: CreateUserDto): Promise<CreationResponse> {
     // 1. Create User in Keycloak
     let keycloakId: string;
     try {
+      await this.authenticate();
       const response = await this.kcAdminClient.users.create({
         username: dto.username,
         email: dto.email,
@@ -125,6 +141,7 @@ export class UsersService implements OnModuleInit {
       id: keycloakId,
       email: dto.email,
       username: dto.username,
+      gender: dto.gender,
     });
 
     try {
@@ -132,10 +149,11 @@ export class UsersService implements OnModuleInit {
       this.logger.log(
         `Registered new user: keycloakId=${keycloakId}, email=${dto.email}`,
       );
-      return savedUser;
+      return { newId: savedUser.id };
     } catch (error) {
-      // 4. Rollback: If DB save fails, delete from Keycloak to stay consistent
+      // Rollback: If DB save fails, delete from Keycloak to stay consistent
       try {
+        await this.authenticate();
         await this.kcAdminClient.users.del({ id: keycloakId });
       } catch (rollbackError) {
         this.logger.error(
@@ -157,34 +175,30 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  async updateProfile(
-    dto: UpdateUserDto,
-    currentUser: AuthenticatedUser,
-  ): Promise<User> {
+  async updateProfile(dto: UpdateUserDto, id: string): Promise<User> {
     const user = await this.usersRepo.findOne({
-      where: { id: currentUser.userId },
+      where: { id },
     });
     if (!user) {
-      throw new NotFoundException(
-        `No profile found for keycloakId=${currentUser.userId}`,
-      );
+      throw new NotFoundException(`No profile found for keycloakId=${id}`);
     }
 
     // Only update fields if they are provided in the DTO
-    if (dto.username) user.username = dto.username;
-    if (dto.title) user.title = dto.title;
-    if (dto.bio) user.bio = dto.bio;
-    if (dto.gender) user.gender = dto.gender;
-    if (dto.birthdate) user.birthdate = new Date(dto.birthdate);
-    if (dto.latitude) user.latitude = dto.latitude;
-    if (dto.longitude) user.longitude = dto.longitude;
-    if (dto.city) user.city = dto.city;
-    if (dto.country) user.country = dto.country;
-    if (dto.isActive) user.isActive = dto.isActive;
-    if (dto.preferences) user.preferences = dto.preferences;
+    if (dto.username !== undefined) user.username = dto.username;
+    if (dto.title !== undefined) user.title = dto.title;
+    if (dto.bio !== undefined) user.bio = dto.bio;
+    if (dto.gender !== undefined) user.gender = dto.gender;
+    if (dto.birthdate !== undefined) user.birthdate = dto.birthdate;
+    if (dto.latitude !== undefined) user.latitude = dto.latitude;
+    if (dto.longitude !== undefined) user.longitude = dto.longitude;
+    if (dto.city !== undefined) user.city = dto.city;
+    if (dto.country !== undefined) user.country = dto.country;
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    if (dto.preferences !== undefined) user.preferences = dto.preferences;
+    if (dto.photos !== undefined) user.photos = dto.photos;
 
     const updatedUser = await this.usersRepo.save(user);
-    this.logger.log(`Updated profile for user ${currentUser.userId}`);
+    this.logger.log(`Updated profile for user ${id}`);
     return updatedUser;
   }
 
@@ -193,7 +207,7 @@ export class UsersService implements OnModuleInit {
     fieldToExtractCodes: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
-  ): Promise<Partial<User>> {
+  ): Promise<UserWithDistance> {
     const fieldsToSelect = FIELD_MAP[fieldToExtractCodes];
 
     const user = await this.usersRepo.findOne({
@@ -284,28 +298,11 @@ export class UsersService implements OnModuleInit {
       take: sanitizedLimit,
     });
 
-    const usersWithDistance: UserWithDistance[] = users.map((user) => {
-      if (
-        !user.latitude ||
-        !user.longitude ||
-        !currentUserLat ||
-        !currentUserLon
-      ) {
-        return user;
-      }
-
-      const distanceKm = calculateDistance(
-        currentUserLat,
-        currentUserLon,
-        user.latitude,
-        user.longitude,
-      );
-
-      return {
-        ...user,
-        distance: Math.round(distanceKm * 10) / 10,
-      };
-    });
+    const usersWithDistance: UserWithDistance[] = this.usersToUsersWithDistance(
+      users,
+      currentUserLat,
+      currentUserLon,
+    );
 
     const totalPages = Math.ceil(total / sanitizedLimit);
 
@@ -324,10 +321,10 @@ export class UsersService implements OnModuleInit {
     return this.usersRepo.save(user);
   }
 
-  async discover(
-    query: DiscoverQueryDto,
-  ): Promise<{ data: User[]; total: number }> {
+  async discover(query: DiscoverQueryDto): Promise<PaginatedUsers> {
     const { gender, ageMin, ageMax, page = 1, limit = 20 } = query;
+    const sanitizedPage = Math.max(1, Math.floor(page));
+    const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
 
     const qb = this.usersRepo
       .createQueryBuilder("user")
@@ -339,21 +336,44 @@ export class UsersService implements OnModuleInit {
     if (ageMin) {
       const maxBirthdate = new Date();
       maxBirthdate.setFullYear(maxBirthdate.getFullYear() - ageMin);
-      qb.andWhere("user.birthdate <= :maxBirthdate", { maxBirthdate });
+      qb.andWhere("user.birthdate <= :maxBirthdate", {
+        maxBirthdate: maxBirthdate.toISOString().slice(0, 10),
+      });
     }
     if (ageMax) {
       const minBirthdate = new Date();
       minBirthdate.setFullYear(minBirthdate.getFullYear() - ageMax);
-      qb.andWhere("user.birthdate >= :minBirthdate", { minBirthdate });
+      qb.andWhere("user.birthdate >= :minBirthdate", {
+        minBirthdate: minBirthdate.toISOString().slice(0, 10),
+      });
     }
 
     const total = await qb.getCount();
     const data = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+      .select([
+        "user.id",
+        "user.username",
+        "user.photos",
+        "user.title",
+        "user.birthdate",
+      ])
+      .skip((sanitizedPage - 1) * sanitizedLimit)
+      .take(sanitizedLimit)
       .getMany();
 
-    return { data, total };
+    const totalPages = Math.ceil(total / sanitizedLimit);
+
+    return {
+      data: this.usersToUsersWithDistance(
+        data,
+        query.currentUserLat,
+        query.currentUserLon,
+      ),
+      total,
+      page: sanitizedPage,
+      limit: sanitizedLimit,
+      totalPages,
+    };
   }
 
   async softDelete(id: string): Promise<void> {
@@ -363,5 +383,37 @@ export class UsersService implements OnModuleInit {
 
     await this.kafkaProducer.emit(KAFKA_TOPICS.USER_DELETED, { id });
     this.logger.log(`Soft-deleted user keycloakId=${id}`);
+  }
+
+  private usersToUsersWithDistance(
+    users: User[],
+    currentUserLat?: number,
+    currentUserLon?: number,
+  ): UserWithDistance[] {
+    return users.map((user) => {
+      if (
+        !user.latitude ||
+        !user.longitude ||
+        !currentUserLat ||
+        !currentUserLon
+      ) {
+        return user;
+      }
+
+      const distanceKm = calculateDistance(
+        currentUserLat,
+        currentUserLon,
+        user.latitude,
+        user.longitude,
+      );
+
+      user.latitude = undefined;
+      user.longitude = undefined;
+
+      return {
+        ...user,
+        distance: Math.round(distanceKm * 10) / 10,
+      };
+    });
   }
 }

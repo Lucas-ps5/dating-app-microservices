@@ -1,0 +1,272 @@
+﻿openapi: 3.0.3
+
+info:
+  title: HMeet – Media Service
+  description: |
+    Internal HTTP API for image storage and retrieval via **MinIO** (S3-compatible).
+    **Not exposed publicly** — called only by the api-gateway over the internal Docker network.
+
+    **Authentication**: Caller identity is forwarded via the `x-user-id` header
+    (extracted from the Keycloak JWT by the api-gateway).
+
+    **Storage backend**: MinIO bucket `hmeet-media`
+    - S3 API:     http://localhost:9000
+    - Web console: http://localhost:9001  (user: minioadmin / minioadmin)
+
+    **Allowed MIME types**: image/jpeg, image/png, image/webp, image/gif
+
+    **Max file size**: 10 MB
+
+    **Async events (Kafka)**:
+    | Event | Topic | Produced when |
+    |---|---|---|
+    | `image.uploaded` | `media-events` | Image successfully stored in MinIO |
+    | `image.deleted`  | `media-events` | Image removed from MinIO |
+
+    **Database**: PostgreSQL (`hmeet_media` — port 5435 in development)
+    Stores image metadata (imageName, originalName, imageType, imageSize, imageUrl).
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3003/api
+    description: Local development (direct access)
+  - url: http://media-service:3003/api
+    description: Internal Docker network
+
+tags:
+  - name: images
+    description: Image upload, presigned URL generation and deletion
+
+components:
+  schemas:
+    Image:
+      type: object
+      description: Image metadata record stored in PostgreSQL
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "e1f2a3b4-0005-4d4e-f567-000000000005"
+        imageName:
+          type: string
+          format: uuid
+          description: UUID generated as the MinIO object key prefix
+          example: "7c9a2b3d-1234-5678-abcd-ef0123456789"
+        originalName:
+          type: string
+          description: Original filename from the upload
+          example: "my-photo.jpg"
+        imageType:
+          type: string
+          description: MIME type of the image
+          example: "image/jpeg"
+        imageSize:
+          type: integer
+          description: File size in bytes
+          example: 204800
+        imageUrl:
+          type: string
+          format: uri
+          description: Public or presigned URL stored after upload
+          example: "http://localhost:9000/hmeet-media/users/abc123/7c9a2b3d.jpg"
+
+    UploadImageResponse:
+      type: object
+      properties:
+        imageUrl:
+          type: string
+          format: uri
+          description: URL of the uploaded image in MinIO
+          example: "http://localhost:9000/hmeet-media/users/abc123/7c9a2b3d.jpg"
+        objectName:
+          type: string
+          description: MinIO object key — use this for presign and delete operations
+          example: "users/abc123/7c9a2b3d.jpg"
+
+    PresignedUrlResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Temporary presigned download URL
+          example: "http://localhost:9000/hmeet-media/users/abc123/7c9a2b3d.jpg?X-Amz-Expires=3600&X-Amz-Signature=..."
+        expiresIn:
+          type: integer
+          description: Expiry duration in seconds
+          example: 3600
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: No file provided or unsupported MIME type
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            noFile:
+              summary: No file provided
+              value:
+                statusCode: 400
+                message: "No file provided"
+                error: "Bad Request"
+            badMime:
+              summary: Unsupported file type
+              value:
+                statusCode: 400
+                message: "File type not allowed. Accepted: image/jpeg, image/png, image/webp, image/gif"
+                error: "Bad Request"
+    NotFound:
+      description: Object not found in MinIO or metadata not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+paths:
+
+  /media/images:
+    post:
+      tags: [images]
+      summary: Upload an image to MinIO
+      description: |
+        Stores the image in the `hmeet-media` MinIO bucket under a path derived from the
+        caller's `x-user-id` header and a generated UUID object name.
+
+        After a successful upload, the service:
+        1. Saves metadata to the `images` PostgreSQL table
+        2. Publishes an `image.uploaded` Kafka event to `media-events`
+      operationId: uploadImage
+      parameters:
+        - name: x-user-id
+          in: header
+          required: false
+          description: Owner's UUID — defaults to "anonymous" if omitted
+          schema:
+            type: string
+            format: uuid
+        - name: context
+          in: query
+          required: false
+          description: Usage context tag (e.g. avatar, chat). Stored with the Kafka event.
+          schema:
+            type: string
+            default: general
+          example: avatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: |
+                    Image file. Allowed types: image/jpeg, image/png, image/webp, image/gif.
+                    Maximum size: 10 MB.
+                context:
+                  type: string
+                  description: Usage context (same as query param — one or the other)
+                  example: profile-photo
+      responses:
+        "201":
+          description: Image uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadImageResponse"
+              example:
+                imageUrl: "http://localhost:9000/hmeet-media/users/abc123/7c9a2b3d.jpg"
+                objectName: "users/abc123/7c9a2b3d.jpg"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          description: File exceeds 10 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /media/images/presign:
+    get:
+      tags: [images]
+      summary: Get a presigned download URL for a private object
+      description: |
+        Generates a temporary presigned URL that allows unauthenticated download of a private object.
+        Useful for private profile photos stored without public read access.
+      operationId: getPresignedUrl
+      parameters:
+        - name: objectName
+          in: query
+          required: true
+          description: MinIO object key as returned by the upload endpoint
+          schema:
+            type: string
+          example: "users/abc123/7c9a2b3d.jpg"
+        - name: expires
+          in: query
+          required: false
+          description: URL lifetime in seconds (default 3600)
+          schema:
+            type: integer
+            default: 3600
+          example: 3600
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrlResponse"
+        "400":
+          description: objectName query param is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /media/images/{objectName}:
+    delete:
+      tags: [images]
+      summary: Delete an image from MinIO
+      description: |
+        Removes the object from the MinIO bucket and publishes an `image.deleted` Kafka event.
+        Nested paths are supported (e.g. `users/abc123/7c9a2b3d.jpg`).
+      operationId: deleteImage
+      parameters:
+        - name: objectName
+          in: path
+          required: true
+          description: MinIO object key (wildcard path segment)
+          schema:
+            type: string
+          example: "users/abc123/7c9a2b3d.jpg"
+        - name: x-user-id
+          in: header
+          required: false
+          description: Owner's UUID — defaults to "anonymous" if omitted
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Image deleted from MinIO
+        "404":
+          $ref: "#/components/responses/NotFound"

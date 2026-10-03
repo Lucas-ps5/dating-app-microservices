@@ -1,0 +1,702 @@
+﻿openapi: 3.0.3
+
+info:
+  title: HMeet – API Gateway
+  description: |
+    Public-facing REST gateway for the HMeet dating app.
+    All requests are authenticated with a **Keycloak-issued JWT** (Bearer token)
+    and proxied to the appropriate internal microservice.
+
+    | Internal service  | Base URL (internal)              |
+    |-------------------|----------------------------------|
+    | users-service     | http://users-service:3001/api    |
+    | chat-service      | http://chat-service:3002/api     |
+    | media-service     | http://media-service:3003/api    |
+
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development
+
+tags:
+  - name: users
+    description: Registration, profile management and discovery (→ users-service)
+  - name: chat
+    description: Matches and conversations (→ chat-service)
+  - name: media
+    description: Image upload and management (→ media-service)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak-issued JWT access token
+
+  schemas:
+    Gender:
+      type: string
+      enum: [male, female]
+      example: male
+
+    UserPreferences:
+      type: object
+      properties:
+        ageMin:
+          type: integer
+          minimum: 18
+          example: 21
+        ageMax:
+          type: integer
+          maximum: 100
+          example: 35
+        genderPreference:
+          type: string
+          example: female
+        maxDistance:
+          type: number
+          format: float
+          example: 50
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        username:
+          type: string
+          example: johndoe
+        title:
+          type: string
+          nullable: true
+          example: Software Engineer
+        bio:
+          type: string
+          nullable: true
+          example: "Loves hiking and coffee"
+        birthdate:
+          type: string
+          format: date
+          nullable: true
+          example: "1995-06-15"
+        gender:
+          $ref: "#/components/schemas/Gender"
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          example: 51.5074
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          example: -0.1278
+        city:
+          type: string
+          nullable: true
+          example: London
+        country:
+          type: string
+          nullable: true
+          example: UK
+        photos:
+          type: array
+          items:
+            type: string
+          example: ["https://cdn.hmeet.io/photos/a3f2c1d0/1.jpg"]
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+        isActive:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateUserRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          pattern: "^[a-zA-Z0-9_-]+$"
+          example: johndoe
+        password:
+          type: string
+          minLength: 6
+          example: SecretPassword123
+
+    UpdateProfileRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          pattern: "^[a-zA-Z0-9_-]+$"
+          example: johndoe
+        title:
+          type: string
+          maxLength: 255
+        bio:
+          type: string
+          maxLength: 500
+        birthdate:
+          type: string
+          format: date
+        gender:
+          $ref: "#/components/schemas/Gender"
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        city:
+          type: string
+        country:
+          type: string
+        isActive:
+          type: boolean
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+
+    MessageType:
+      type: string
+      enum: [text, image, gif]
+      default: text
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        matchId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+          format: uuid
+        content:
+          type: string
+          example: "Hey! How's it going?"
+        type:
+          $ref: "#/components/schemas/MessageType"
+        sentAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user1Id:
+          type: string
+          format: uuid
+        user2Id:
+          type: string
+          format: uuid
+        isActive:
+          type: boolean
+          default: true
+        matchedAt:
+          type: string
+          format: date-time
+
+    Conversation:
+      type: object
+      properties:
+        matchId:
+          type: string
+          format: uuid
+        otherUserId:
+          type: string
+          format: uuid
+        lastMessage:
+          $ref: "#/components/schemas/Message"
+        unreadCount:
+          type: integer
+          example: 3
+
+    ImageUploadResponse:
+      type: object
+      properties:
+        imageUrl:
+          type: string
+          format: uri
+          example: "http://localhost:9000/hmeet-media/users/abc123/avatar.jpg"
+        objectName:
+          type: string
+          example: "users/abc123/avatar.jpg"
+
+    PresignedUrlResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresIn:
+          type: integer
+          example: 3600
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            statusCode: 401
+            message: Unauthorized
+            error: Unauthorized
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ── Users ──────────────────────────────────────────────────────────────────
+
+  /users/register:
+    post:
+      tags: [users]
+      summary: Register a new user
+      description: Public endpoint — no JWT required. Proxied to POST /api/users/register on users-service.
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Username or email already taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/discover:
+    get:
+      tags: [users]
+      summary: Discover potential matches
+      operationId: discoverUsers
+      parameters:
+        - name: gender
+          in: query
+          schema:
+            $ref: "#/components/schemas/Gender"
+        - name: ageMin
+          in: query
+          schema:
+            type: integer
+            minimum: 18
+        - name: ageMax
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list of profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/profile:
+    patch:
+      tags: [users]
+      summary: Update my profile
+      description: Caller ID resolved from JWT. Proxied to PATCH /api/users/by-keycloak/{id} on users-service.
+      operationId: updateMyProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/me/photos:
+    post:
+      tags: [users]
+      summary: Upload a profile photo
+      description: Uploads photo to media-service (MinIO) then links URL to the user profile in users-service.
+      operationId: uploadProfilePhoto
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Image file — max 10 MB
+      responses:
+        "201":
+          description: Photo uploaded and linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageUploadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/{id}:
+    get:
+      tags: [users]
+      summary: Get user profile by ID
+      operationId: getUserById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [users]
+      summary: Delete a user (admin)
+      operationId: deleteUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Chat ───────────────────────────────────────────────────────────────────
+
+  /chat/matches/{userId}:
+    post:
+      tags: [chat]
+      summary: Create a match with another user
+      operationId: createMatch
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Target user UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Match created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /chat/matches:
+    get:
+      tags: [chat]
+      summary: List my matches
+      operationId: listMatches
+      responses:
+        "200":
+          description: List of matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Match"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /chat/conversations:
+    get:
+      tags: [chat]
+      summary: List my conversations
+      operationId: listConversations
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /chat/conversations/{matchId}/messages:
+    get:
+      tags: [chat]
+      summary: Get messages for a conversation
+      operationId: getMessages
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: before
+          in: query
+          description: Return messages sent before this ISO timestamp (cursor)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Paginated messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  total:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a participant in this match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Media ──────────────────────────────────────────────────────────────────
+
+  /media/images:
+    post:
+      tags: [media]
+      summary: Upload an image
+      operationId: uploadImage
+      parameters:
+        - name: context
+          in: query
+          schema:
+            type: string
+            default: general
+          example: avatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, WebP or GIF — max 10 MB
+      responses:
+        "201":
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageUploadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /media/images/presign:
+    get:
+      tags: [media]
+      summary: Get a presigned download URL
+      operationId: getPresignedUrl
+      parameters:
+        - name: objectName
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "users/abc123/avatar.jpg"
+        - name: expires
+          in: query
+          schema:
+            type: integer
+            default: 3600
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrlResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /media/images/{objectName}:
+    delete:
+      tags: [media]
+      summary: Delete an image from MinIO
+      operationId: deleteImage
+      parameters:
+        - name: objectName
+          in: path
+          required: true
+          description: MinIO object key (nested paths supported)
+          schema:
+            type: string
+          example: "users/abc123/avatar.jpg"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"

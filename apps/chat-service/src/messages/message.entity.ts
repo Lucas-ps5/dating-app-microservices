@@ -3,8 +3,11 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
   Index,
 } from "typeorm";
+import { Conversation } from "./conversation.entity";
 
 export enum MessageType {
   TEXT = "text",
@@ -12,17 +15,35 @@ export enum MessageType {
   GIF = "gif",
 }
 
+export enum MessageStatus {
+  UNREAD = "UNREAD",
+  READ = "READ",
+}
+
 @Entity("messages")
+@Index(["conversationId", "createdAt"]) // Crucial for loading chat history fast
 export class Message {
   @PrimaryGeneratedColumn("uuid")
   id: string;
 
-  @Column()
-  @Index()
-  matchId: string;
+  // --- NEW RELATION ---
+  @ManyToOne(() => Conversation, (conversation) => conversation.messages, {
+    onDelete: "CASCADE", // If conversation deletes, delete messages too
+  })
+  @JoinColumn({ name: "conversationId" })
+  conversation: Conversation;
 
-  @Column()
+  @Column("uuid")
+  conversationId: string; // The actual foreign key column in the DB
+  // ---------------------
+
+  @Column("uuid")
+  @Index()
   senderId: string;
+
+  @Column("uuid")
+  @Index()
+  receiverId: string; // Still useful for fast unread count queries
 
   @Column({ type: "text" })
   content: string;
@@ -33,6 +54,13 @@ export class Message {
     default: MessageType.TEXT,
   })
   type: MessageType;
+
+  @Column({
+    type: "enum",
+    enum: MessageStatus,
+    default: MessageStatus.UNREAD,
+  })
+  status: MessageStatus;
 
   @CreateDateColumn()
   sentAt: Date;

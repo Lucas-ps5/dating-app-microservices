@@ -49,7 +49,7 @@ export class CreateUserDto {
 
   @IsEmail()
   @ApiProperty({ example: "user@example.com" })
-  email: string;
+  email!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -60,17 +60,22 @@ export class CreateUserDto {
       "Username can only contain letters, numbers, underscores, and dashes.",
   })
   @ApiProperty({ example: "johndoe" })
-  username: string;
+  username!: string;
 
   // Password added with basic validation
   @IsString()
   @MinLength(6)
   @IsNotEmpty()
   @ApiProperty({ example: "SecretPassword123" })
-  password: string;
+  password!: string;
+
+  @IsEnum(Gender)
+  @ApiProperty({ enum: Gender })
+  gender!: Gender;
 }
 
 export class UpdateUserDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
@@ -80,7 +85,7 @@ export class UpdateUserDto {
       "Username can only contain letters, numbers, underscores, and dashes.",
   })
   @ApiProperty({ example: "johndoe" })
-  username: string;
+  username!: string;
 
   @IsOptional()
   @IsString()
@@ -142,6 +147,11 @@ export class UpdateUserDto {
   @Type(() => UserPreferencesDto)
   @ApiPropertyOptional({ type: UserPreferencesDto })
   preferences?: UserPreferencesDto;
+
+  @IsOptional()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String] })
+  photos?: string[];
 }
 
 export class DiscoverQueryDto {
@@ -175,4 +185,16 @@ export class DiscoverQueryDto {
   @Type(() => Number)
   @ApiPropertyOptional({ default: 20 })
   limit?: number = 20;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional()
+  currentUserLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional()
+  currentUserLon?: number;
 }

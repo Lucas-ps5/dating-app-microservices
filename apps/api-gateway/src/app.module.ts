@@ -3,9 +3,8 @@ import { ConfigModule } from "@nestjs/config";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
-import { UsersProxyModule } from "./users/users-proxy.module";
-import { ChatProxyModule } from "./chat/chat-proxy.module";
 import { MediaProxyModule } from "./media/media-proxy.module";
+import { GenericProxyModule } from "./proxy/generic-proxy.module";
 import configuration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
 
@@ -13,6 +12,7 @@ import { validationSchema } from "./config/validation.schema";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [`.env.${process.env.NODE_ENV || "development"}`, ".env"],
       load: [configuration],
       validationSchema,
       validationOptions: {
@@ -21,9 +21,8 @@ import { validationSchema } from "./config/validation.schema";
       },
     }),
     AuthModule,
-    UsersProxyModule,
-    ChatProxyModule,
     MediaProxyModule,
+    GenericProxyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

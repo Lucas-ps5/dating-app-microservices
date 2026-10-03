@@ -18,5 +18,6 @@ export default () => ({
     usersUrl: process.env.USERS_SERVICE_URL || "http://localhost:3001/api",
     chatUrl: process.env.CHAT_SERVICE_URL || "http://localhost:3002/api",
     mediaUrl: process.env.MEDIA_SERVICE_URL || "http://localhost:3003/api",
+    matchesUrl: process.env.MATCHES_SERVICE_URL || "http://localhost:3004/api",
   },
 });

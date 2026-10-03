@@ -39,6 +39,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Postgres for matches Service ───────────────────────────────────────────────
+  matches-db:
+    image: postgres:16-alpine
+    container_name: hmeet-matches-db
+    environment:
+      POSTGRES_DB: hmeet_matches
+      POSTGRES_USER: hmeet_matches
+      POSTGRES_PASSWORD: hmeet_matches_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - matches_db_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmeet_matches"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─── Postgres for Chat Service ───────────────────────────────────────────────
   chat-db:
     image: postgres:16-alpine
@@ -81,7 +101,7 @@ services:
 
   # ─── Keycloak ─────────────────────────────────────────────────────────────────
   keycloak:
-    image: quay.io/keycloak/keycloak:23.0
+    image: quay.io/keycloak/keycloak:26.1.1
     container_name: hmeet-keycloak
     environment:
       KC_DB: postgres
@@ -94,8 +114,12 @@ services:
       KC_METRICS_ENABLED: true
     command:
       - start-dev
+      - --import-realm
     ports:
       - "8080:8080"
+    volumes:
+      - ./keycloak/hmeet-realm.json:/opt/keycloak/data/import/hmeet-realm.json:ro
+      - ./dist_keycloak/keycloak-theme-for-kc-all-other-versions.jar:/opt/keycloak/providers/keycloak-theme-for-kc-all-other-versions.jar:ro
     depends_on:
       postgres:
         condition: service_healthy

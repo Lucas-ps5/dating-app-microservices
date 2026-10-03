@@ -1,0 +1,538 @@
+﻿openapi: 3.0.3
+
+info:
+  title: HMeet – Users Service
+  description: |
+    Internal HTTP API for profile and discovery management.
+    **Not exposed publicly** — called only by the api-gateway over the internal Docker network.
+
+    **Authentication**: The gateway forwards the caller's identity via the `x-user-id` and
+    `x-user-email` headers (extracted from the Keycloak JWT). No Bearer token is required here.
+
+    **Database**: PostgreSQL (`hmeet_users` — port 5433 in development)
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3001/api
+    description: Local development (direct access)
+  - url: http://users-service:3001/api
+    description: Internal Docker network
+
+tags:
+  - name: users
+    description: User registration, profile CRUD, photo management and discovery
+
+components:
+  schemas:
+    Gender:
+      type: string
+      enum: [male, female]
+      example: male
+
+    UserPreferences:
+      type: object
+      properties:
+        ageMin:
+          type: integer
+          minimum: 18
+          example: 21
+        ageMax:
+          type: integer
+          maximum: 100
+          example: 35
+        genderPreference:
+          type: string
+          example: female
+        maxDistance:
+          type: number
+          format: float
+          example: 50
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Internal UUID — same value as the Keycloak subject (sub)
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          pattern: "^[a-zA-Z0-9_-]+$"
+          example: johndoe
+        title:
+          type: string
+          maxLength: 255
+          nullable: true
+          example: Software Engineer
+        bio:
+          type: string
+          maxLength: 500
+          nullable: true
+          example: "Loves hiking and coffee"
+        birthdate:
+          type: string
+          format: date
+          nullable: true
+          example: "1995-06-15"
+        gender:
+          $ref: "#/components/schemas/Gender"
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          minimum: -90
+          maximum: 90
+          example: 51.5074
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          minimum: -180
+          maximum: 180
+          example: -0.1278
+        city:
+          type: string
+          nullable: true
+          example: London
+        country:
+          type: string
+          nullable: true
+          example: UK
+        photos:
+          type: array
+          items:
+            type: string
+            format: uri
+          example: ["http://localhost:9000/hmeet-media/users/abc123/avatar.jpg"]
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+        isActive:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserWithDistance:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            distance:
+              type: number
+              format: float
+              description: Distance in kilometers from the current user (if provided)
+              example: 12.5
+
+    CreateUserRequest:
+      type: object
+      required: [email, username, password, gender]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          pattern: "^[a-zA-Z0-9_-]+$"
+          example: johndoe
+        password:
+          type: string
+          minLength: 6
+          description: Forwarded to Keycloak for account creation
+          example: SecretPassword123
+        gender:
+          $ref: "#/components/schemas/Gender"
+
+    UpdateUserRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          pattern: "^[a-zA-Z0-9_-]+$"
+          example: johndoe
+        title:
+          type: string
+          maxLength: 255
+        bio:
+          type: string
+          maxLength: 500
+        birthdate:
+          type: string
+          format: date
+        gender:
+          $ref: "#/components/schemas/Gender"
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        city:
+          type: string
+        country:
+          type: string
+        isActive:
+          type: boolean
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+        photos:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    UsersListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserWithDistance"
+        total:
+          type: integer
+          example: 120
+
+    CreationResponse:
+      type: object
+      properties:
+        newId:
+          type: string
+          format: uuid
+          description: Internal UUID of the newly created user
+          example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+
+    PaginatedUsersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserWithDistance"
+        total:
+          type: integer
+          example: 120
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        totalPages:
+          type: integer
+          example: 6
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            statusCode: 404
+            message: "User not found"
+            error: "Not Found"
+
+paths:
+  /register:
+    post:
+      tags: [users]
+      summary: Register a new user
+      description: |
+        Creates a Keycloak account then persists the local profile in PostgreSQL.
+        Called by the api-gateway on the public POST /api/user/register route.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email or username already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /{id}/update:
+    post:
+      tags: [users]
+      summary: Update profile (called by api-gateway on first login)
+      description: |
+        Upserts a user profile after Keycloak login.
+        Caller identity forwarded via `x-user-id` header.
+      operationId: updateProfile
+      parameters:
+        - name: x-user-id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Keycloak subject (sub) of the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /discover:
+    get:
+      tags: [users]
+      summary: Discover potential matches
+      description: Returns a paginated list of active users excluding the caller and already-matched users.
+      operationId: discoverUsers
+      parameters:
+        - name: currentUserId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Injected by the api-gateway from the JWT
+        - name: gender
+          in: query
+          schema:
+            $ref: "#/components/schemas/Gender"
+        - name: ageMin
+          in: query
+          schema:
+            type: integer
+            minimum: 18
+        - name: ageMax
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list of profiles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedUsersResponse"
+
+  /{id}:
+    get:
+      tags: [users]
+      summary: Get profile by internal UUID
+      operationId: getUserById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: fieldToExtractCodes
+          in: query
+          required: false
+          description: Comma-separated codes controlling which fields are returned
+          schema:
+            type: string
+        - name: currentUserLat
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: currentUserLon
+          in: query
+          schema:
+            type: number
+            format: double
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /me:
+    get:
+      tags: [users]
+      summary: Get profile of the current user
+      operationId: getCurrentUserProfile
+      parameters:
+        - name: fieldToExtractCodes
+          in: query
+          required: false
+          description: Comma-separated codes controlling which fields are returned
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /by-username/{username}:
+    get:
+      tags: [users]
+      summary: Get profile by username
+      operationId: getUserByUsername
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fieldToExtractCodes
+          in: query
+          required: false
+          description: Comma-separated codes controlling which fields are returned
+          schema:
+            type: string
+        - name: currentUserLat
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: currentUserLon
+          in: query
+          schema:
+            type: number
+            format: double
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [users]
+      summary: Soft-delete a user
+      operationId: softDeleteUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: User soft-deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /by-keycloak/{keycloakId}/photos:
+    post:
+      tags: [users]
+      summary: Link a photo URL to a user profile
+      description: |
+        Called by the api-gateway after a successful upload to media-service.
+        Appends the returned `imageUrl` to the user's `photos` array.
+      operationId: addPhotoUrl
+      parameters:
+        - name: keycloakId
+          in: path
+          required: true
+          description: Keycloak subject (sub) of the user
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageUrl]
+              properties:
+                imageUrl:
+                  type: string
+                  format: uri
+                  example: "http://localhost:9000/hmeet-media/users/abc123/avatar.jpg"
+      responses:
+        "201":
+          description: Photo linked to profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
