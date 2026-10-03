@@ -68,6 +68,10 @@ export class CreateUserDto {
   @IsNotEmpty()
   @ApiProperty({ example: "SecretPassword123" })
   password!: string;
+
+  @IsEnum(Gender)
+  @ApiProperty({ enum: Gender })
+  gender!: Gender;
 }
 
 export class UpdateUserDto {

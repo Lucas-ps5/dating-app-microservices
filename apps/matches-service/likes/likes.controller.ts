@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Headers,
+} from "@nestjs/common";
 import { CreateLikeDto } from "./dto/create-like.dto";
 import { LikesService } from "./likes.service";
+import { UserHeaders } from "@app/common/types/types";
 
 @Controller("likes")
 export class LikesController {
@@ -9,7 +18,7 @@ export class LikesController {
   @Post("create")
   create(
     @Body() createLikeDto: CreateLikeDto,
-    @Query("userId") userId?: string,
+    @Headers(UserHeaders.USER_ID) userId: string,
   ) {
     return this.likesService.create(createLikeDto, userId);
   }
@@ -17,7 +26,7 @@ export class LikesController {
   @Post("dislike")
   dislike(
     @Body() removeLikeDto: CreateLikeDto,
-    @Query("userId") userId?: string,
+    @Headers(UserHeaders.USER_ID) userId: string,
   ) {
     return this.likesService.dislike(userId, removeLikeDto.receiverId);
   }
@@ -27,31 +36,31 @@ export class LikesController {
     return this.likesService.findAll(+page, +limit);
   }
 
-  @Get(":userId/received")
+  @Get("my/received")
   async findAllForUser(
-    @Param("userId") userId: string,
+    @Headers(UserHeaders.USER_ID) userId: string,
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
     return this.likesService.findAllMyReceivedLikes(userId, +page, +limit);
   }
 
-  @Get(":userId/sent")
+  @Get("my/sent")
   async findAllSentLikes(
-    @Param("userId") userId: string,
+    @Headers(UserHeaders.USER_ID) userId: string,
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
     return this.likesService.findAllMySentLikes(userId, +page, +limit);
   }
 
-  @Get(":userId/received/count")
-  async countMyReceivedLikes(@Param("userId") userId: string) {
+  @Get("my/received/count")
+  async countMyReceivedLikes(@Headers(UserHeaders.USER_ID) userId: string) {
     return this.likesService.countMyReceivedLikes(userId);
   }
 
-  @Get(":userId/sent/count")
-  async countMySentLikes(@Param("userId") userId: string) {
+  @Get("my/sent/count")
+  async countMySentLikes(@Headers(UserHeaders.USER_ID) userId: string) {
     return this.likesService.countMySentLikes(userId);
   }
 

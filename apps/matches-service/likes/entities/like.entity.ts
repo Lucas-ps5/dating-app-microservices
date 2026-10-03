@@ -26,5 +26,5 @@ export class Like {
   type!: SwipeType;
 
   @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
-  createdAt!: string;
+  createdAt!: Date;
 }

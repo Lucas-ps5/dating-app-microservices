@@ -3,11 +3,13 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Post,
   Query,
 } from "@nestjs/common";
 import { MatchesService } from "./matches.service";
+import { UserHeaders } from "@app/common";
 
 @Controller("matches")
 export class MatchesController {
@@ -23,13 +25,18 @@ export class MatchesController {
     return this.matchesService.findAll(+page, +limit);
   }
 
-  @Get("user/:userId")
+  @Get("my")
   findMatchesForUser(
-    @Param("userId") userId: string,
+    @Headers(UserHeaders.USER_ID) userId: string,
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
     return this.matchesService.findMatchesForUser(+page, +limit, userId);
+  }
+
+  @Get("count-my-matches")
+  countMyMatches(@Headers(UserHeaders.USER_ID) userId: string) {
+    return this.matchesService.countMatchesForUser(userId);
   }
 
   @Get(":id")
@@ -40,10 +47,5 @@ export class MatchesController {
   @Delete(":id")
   remove(@Param("id") id: string) {
     return this.matchesService.remove(id);
-  }
-
-  @Get("/count-my-matches")
-  countMyMatches(@Query("userId") userId: string) {
-    return this.matchesService.countMyMatches(userId);
   }
 }

@@ -38,8 +38,9 @@ export interface MatchCreatedEvent {
 
 export interface MessageSentEvent {
   messageId: string;
-  matchId: string;
+  conversationId: string;
   senderId: string;
+  receiverId: string;
   content: string;
   type: string;
   sentAt: string;

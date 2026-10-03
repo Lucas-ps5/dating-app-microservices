@@ -20,6 +20,7 @@ import {
   type ProxyHttpMethod,
 } from "../common/http-proxy.service";
 import { PublicProxyRoutesGuard } from "./public-proxy-routes.guard";
+import { UserHeaders } from "@app/common/types/types";
 
 interface ServiceRoute {
   url: string;
@@ -144,9 +145,9 @@ export class GenericProxyController {
     if (!user) return {};
 
     return {
-      "x-user-id": user.id,
-      "x-user-email": user.email ?? "",
-      "x-user-roles": user.roles.join(","),
+      [UserHeaders.USER_ID]: user.id,
+      [UserHeaders.USER_EMAIL]: user.email ?? "",
+      [UserHeaders.USER_ROLES]: user.roles.join(","),
     };
   }
 

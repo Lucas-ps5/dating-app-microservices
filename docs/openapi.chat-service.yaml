@@ -66,6 +66,12 @@ components:
       default: text
       example: text
 
+    MessageStatus:
+      type: string
+      enum: [UNREAD, READ]
+      default: UNREAD
+      example: UNREAD
+
     Message:
       type: object
       properties:
@@ -73,7 +79,7 @@ components:
           type: string
           format: uuid
           example: "d7e8f9a0-0004-4c3d-e456-000000000004"
-        matchId:
+        conversationId:
           type: string
           format: uuid
           example: "b1c2d3e4-0002-4a1b-c234-000000000002"
@@ -81,11 +87,17 @@ components:
           type: string
           format: uuid
           example: "a3f2c1d0-0001-4e2a-b123-000000000001"
+        receiverId:
+          type: string
+          format: uuid
+          example: "c4d5e6f7-0003-4b2c-d345-000000000003"
         content:
           type: string
           example: "Hey! How's it going?"
         type:
           $ref: "#/components/schemas/MessageType"
+        status:
+          $ref: "#/components/schemas/MessageStatus"
         sentAt:
           type: string
           format: date-time
@@ -100,10 +112,33 @@ components:
       type: object
       description: A match enriched with the latest message
       properties:
-        match:
-          $ref: "#/components/schemas/Match"
-        lastMessage:
-          $ref: "#/components/schemas/Message"
+        user1Id:
+          type: string
+          format: uuid
+          description: Authenticated caller's ID (injected by gateway)
+        user2Id:
+          type: string
+          format: uuid
+          description: Target user's ID
+        lastMessagePreview:
+          type: string
+          example: "Hey! How's it going?"
+        lastMessageSentAt:
+          type: string
+          format: date-time
+          example: "2025-07-10T14:00:00Z"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-07-01T08:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-07-01T08:00:00Z"
 
     CreateMatchRequest:
       type: object
@@ -117,6 +152,20 @@ components:
           type: string
           format: uuid
           description: Target user's ID
+
+    SendMessageRequest:
+      type: object
+      required: [receiverId, content]
+      properties:
+        receiverId:
+          type: string
+          format: uuid
+          description: Target user's ID
+        content:
+          type: string
+          example: "Hey! How's it going?"
+        type:
+          $ref: "#/components/schemas/MessageType"
 
     ErrorResponse:
       type: object
@@ -154,97 +203,14 @@ components:
 
 paths:
 
-  # ── Matches ────────────────────────────────────────────────────────────────
-
-  /chat/matches:
-    post:
-      tags: [matches]
-      summary: Create a match between two users
-      description: |
-        Persists the match. Emits a `match.created` Kafka event.
-        Returns a 409 Conflict if the pair is already matched (unique constraint on user1Id + user2Id).
-      operationId: createMatch
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateMatchRequest"
-      responses:
-        "201":
-          description: Match created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Match"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          description: Match already exists
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    get:
-      tags: [matches]
-      summary: List matches for a user
-      operationId: listMatches
-      parameters:
-        - name: userId
-          in: query
-          required: true
-          description: UUID of the user whose matches to list (forwarded from JWT by gateway)
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: List of matches
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Match"
-
-  /chat/matches/{matchId}:
-    get:
-      tags: [matches]
-      summary: Get a match by ID
-      operationId: getMatchById
-      parameters:
-        - name: matchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Match details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Match"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
   # ── Conversations / Messages ───────────────────────────────────────────────
 
-  /chat/conversations:
+  /my/conversations:
     get:
       tags: [conversations]
       summary: List conversations (matches + last message)
       description: Returns all matches for the user, each enriched with the most recent message.
-      operationId: listConversations
-      parameters:
-        - name: userId
-          in: query
-          required: true
-          description: UUID of the authenticated user (forwarded by gateway)
-          schema:
-            type: string
-            format: uuid
+      operationId: getMyConversations
       responses:
         "200":
           description: List of conversations
@@ -255,87 +221,81 @@ paths:
                 items:
                   $ref: "#/components/schemas/Conversation"
 
-  /chat/conversations/{matchId}/messages:
+  /my/conversations/{conversationId}:
     get:
       tags: [conversations]
-      summary: Get messages for a match (paginated)
-      description: Validates that the caller (via `x-user-id` header) is a participant before returning messages.
-      operationId: getMessages
+      summary: Get conversation by ID
+      operationId: getConversationById
       parameters:
-        - name: matchId
+        - name: conversationId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: x-user-id
-          in: header
-          required: true
-          description: Caller's UUID — validated against match participants
-          schema:
-            type: string
-            format: uuid
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
       responses:
         "200":
-          description: Paginated messages
+          description: Conversation found
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Message"
-                  total:
-                    type: integer
-        "403":
-          $ref: "#/components/responses/Forbidden"
+                $ref: "#/components/schemas/Conversation"
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /chat/conversations/{matchId}/read:
+  /conversations/send-message:
     post:
       tags: [conversations]
+      summary: Send a message
+      operationId: sendMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /my/conversations/{conversationId}/read:
+    put:
+      tags: [conversations]
       summary: Mark messages as read
-      description: Sets `readAt` timestamp for all unread messages in the match for the calling user.
-      operationId: markAsRead
+      operationId: markMessagesAsRead
       parameters:
-        - name: matchId
+        - name: conversationId
           in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: x-user-id
-          in: header
-          required: true
-          schema:
-            type: string
-            format: uuid
+      responses:
+        "204":
+          description: Messages marked as read
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /my/unread/count:
+    get:
+      tags: [conversations]
+      summary: Get total unread messages count for the authenticated user
+      operationId: getMyUnreadMessagesCount
       responses:
         "200":
-          description: Messages marked as read
+          description: Unread count
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-        "404":
-          $ref: "#/components/responses/NotFound"
+                $ref: "#/components/schemas/CountResponse"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket Contract — Socket.IO /chat namespace

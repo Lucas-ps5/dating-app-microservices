@@ -1,49 +1,68 @@
-import { Controller, Get, Post, Param, Query, Headers } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Headers,
+  Body,
+  Put,
+} from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { MessagesService } from "./messages.service";
-import { MatchesService } from "../matches/matches.service";
+import { UserHeaders } from "@app/common/types/types";
+import { SendMessageDto } from "./dto/message.dto";
 
-@ApiTags("chat/conversations")
-@Controller("chat/conversations")
+@ApiTags("chat")
+@Controller("chat")
 export class MessagesController {
-  constructor(
-    private readonly messagesService: MessagesService,
-    private readonly matchesService: MatchesService,
-  ) {}
+  constructor(private readonly messagesService: MessagesService) {}
 
-  @Get()
-  @ApiOperation({ summary: "List conversations (matches + last message)" })
-  async listConversations(@Query("userId") userId: string) {
-    const matches = await this.matchesService.findMatchesForUser(userId);
-    const conversations = await Promise.all(
-      matches.map(async (match) => {
-        const lastMessage = await this.messagesService.getLastMessage(match.id);
-        return { match, lastMessage };
-      }),
+  @Get("my/conversations")
+  @ApiOperation({ summary: "List conversations for the authenticated user" })
+  async myConversations(@Headers(UserHeaders.USER_ID) userId: string) {
+    return this.messagesService.getMyConversations(userId);
+  }
+
+  @Get("my/conversations/:conversationId")
+  @ApiOperation({
+    summary: "Get conversation by ID for the authenticated user",
+  })
+  async myConversation(@Param("conversationId") conversationId: string) {
+    return this.messagesService.getConversationById(conversationId);
+  }
+
+  @Post("conversations/send-message")
+  @ApiOperation({
+    summary: "Send a message",
+  })
+  async sendMessage(
+    @Headers(UserHeaders.USER_ID) userId: string,
+    @Body() dto: SendMessageDto,
+  ) {
+    return this.messagesService.sendMessage(
+      userId,
+      dto.receiverId,
+      dto.content,
+      dto.type,
     );
-    return conversations;
   }
 
-  @Get(":matchId/messages")
-  @ApiOperation({ summary: "Get messages for a match (paginated)" })
-  async getMessages(
-    @Param("matchId") matchId: string,
-    @Query("page") page = "1",
-    @Query("limit") limit = "50",
-    @Headers("x-user-id") userId: string,
+  @Put("my/conversations/:conversationId/read")
+  @ApiOperation({
+    summary: "Mark messages as read in a conversation",
+  })
+  async readMessages(
+    @Headers(UserHeaders.USER_ID) userId: string,
+    @Param("conversationId") conversationId: string,
   ) {
-    // Validate participant access
-    await this.matchesService.validateParticipant(matchId, userId);
-    return this.messagesService.getMessages(matchId, +page, +limit);
+    return this.messagesService.readMessages(userId, conversationId);
   }
 
-  @Post(":matchId/read")
-  @ApiOperation({ summary: "Mark messages in a match as read" })
-  async markAsRead(
-    @Param("matchId") matchId: string,
-    @Headers("x-user-id") userId: string,
-  ) {
-    await this.messagesService.markAsRead(matchId, userId);
-    return { success: true };
+  @Get("my/unread/count")
+  @ApiOperation({
+    summary: "Get total unread messages count for the authenticated user",
+  })
+  async myUnreadCount(@Headers(UserHeaders.USER_ID) userId: string) {
+    return this.messagesService.getAllMyUnreadMessagesCount(userId);
   }
 }

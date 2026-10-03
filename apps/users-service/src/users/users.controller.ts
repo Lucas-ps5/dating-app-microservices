@@ -10,11 +10,12 @@ import {
   HttpStatus,
   BadRequestException,
   Put,
+  Headers,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
-import { FieldToExtractCodes } from "@app/common";
+import { FieldToExtractCodes, UserHeaders } from "@app/common";
 
 @ApiTags("users")
 @Controller("user")
@@ -55,6 +56,16 @@ export class UsersController {
       currentUserLat,
       currentUserLon,
     );
+  }
+
+  @Get("me")
+  @ApiOperation({ summary: "Get profile of the current user" })
+  async getCurrentUserProfile(
+    @Headers(UserHeaders.USER_ID) userId: string,
+    @Query("fieldToExtractCodes")
+    fieldToExtractCodes: FieldToExtractCodes,
+  ) {
+    return this.usersService.findById(userId, fieldToExtractCodes);
   }
 
   @Get("by-username/:username")

@@ -309,7 +309,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedMatches"
 
-  /matches/user/{userId}:
+  /matches/my:
     get:
       tags: [matches]
       operationId: listMatchesForUser
@@ -389,6 +389,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+    /count-my-matches:
+      get:
+        tags: [matches]
+        operationId: countMyMatches
+        summary: Count total matches for the authenticated user
+        description: Returns the total number of active matches for the user identified by the `x-user-id` header.
+        parameters:
+          - $ref: "#/components/parameters/UserIdHeader"
+        responses:
+          "200":
+            description: Total count of matches for the user
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/CountResponse"
+                example:
+                  count: 5
 
 # ---------------------------------------------------------------------------
 # Paths — Likes
@@ -528,7 +546,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedLikes"
 
-  /likes/{userId}/received:
+  /likes/my/received:
     get:
       tags: [likes]
       operationId: listReceivedLikes
@@ -553,7 +571,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedLikes"
 
-  /likes/{userId}/sent:
+  /likes/my/sent:
     get:
       tags: [likes]
       operationId: listSentLikes
@@ -578,7 +596,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedLikes"
 
-  /likes/{userId}/received/count:
+  /likes/my/received/count:
     get:
       tags: [likes]
       operationId: countReceivedLikes
@@ -603,7 +621,7 @@ paths:
               example:
                 count: 14
 
-  /likes/{userId}/sent/count:
+  /likes/my/sent/count:
     get:
       tags: [likes]
       operationId: countSentLikes

@@ -141,6 +141,7 @@ export class UsersService implements OnModuleInit {
       id: keycloakId,
       email: dto.email,
       username: dto.username,
+      gender: dto.gender,
     });
 
     try {

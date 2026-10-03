@@ -136,7 +136,7 @@ components:
 
     CreateUserRequest:
       type: object
-      required: [email, username, password]
+      required: [email, username, password, gender]
       properties:
         email:
           type: string
@@ -153,6 +153,8 @@ components:
           minLength: 6
           description: Forwarded to Keycloak for account creation
           example: SecretPassword123
+        gender:
+          $ref: "#/components/schemas/Gender"
 
     UpdateUserRequest:
       type: object
@@ -272,7 +274,7 @@ components:
             error: "Not Found"
 
 paths:
-  /user/register:
+  /register:
     post:
       tags: [users]
       summary: Register a new user
@@ -302,7 +304,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /user/{id}/update:
+  /{id}/update:
     post:
       tags: [users]
       summary: Update profile (called by api-gateway on first login)
@@ -334,7 +336,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
-  /user/discover:
+  /discover:
     get:
       tags: [users]
       summary: Discover potential matches
@@ -381,7 +383,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedUsersResponse"
 
-  /user/{id}:
+  /{id}:
     get:
       tags: [users]
       summary: Get profile by internal UUID
@@ -419,7 +421,29 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /user/by-username/{username}:
+  /me:
+    get:
+      tags: [users]
+      summary: Get profile of the current user
+      operationId: getCurrentUserProfile
+      parameters:
+        - name: fieldToExtractCodes
+          in: query
+          required: false
+          description: Comma-separated codes controlling which fields are returned
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /by-username/{username}:
     get:
       tags: [users]
       summary: Get profile by username
@@ -473,7 +497,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /user/by-keycloak/{keycloakId}/photos:
+  /by-keycloak/{keycloakId}/photos:
     post:
       tags: [users]
       summary: Link a photo URL to a user profile

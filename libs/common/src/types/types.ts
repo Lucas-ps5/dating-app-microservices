@@ -12,3 +12,9 @@ export enum LikeAction {
 export type CountResponse = {
   count: number;
 };
+
+export enum UserHeaders {
+  USER_ID = "x-user-id",
+  USER_EMAIL = "x-user-email",
+  USER_ROLES = "x-user-roles",
+}
