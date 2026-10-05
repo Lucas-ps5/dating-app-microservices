@@ -21,7 +21,8 @@ export enum MessageStatus {
 }
 
 @Entity("messages")
-@Index(["conversationId", "createdAt"]) // Crucial for loading chat history fast
+@Index(["conversationId", "sentAt"]) // Crucial for loading chat history fast
+@Index(["receiverId", "status"]) // Supports the unread-count and mark-as-read queries
 export class Message {
   @PrimaryGeneratedColumn("uuid")
   id: string;

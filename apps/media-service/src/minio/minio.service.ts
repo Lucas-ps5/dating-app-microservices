@@ -6,8 +6,8 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as Minio from "minio";
-import { v4 as uuidv4 } from "uuid";
 import { extname } from "path";
+import { errorMessage } from "@app/common";
 
 @Injectable()
 export class MinioService implements OnModuleInit {
@@ -38,7 +38,9 @@ export class MinioService implements OnModuleInit {
     try {
       await this.ensureBucket();
     } catch (err) {
-      this.logger.warn(`MinIO init failed: ${err.message} – continuing anyway`);
+      this.logger.warn(
+        `MinIO init failed: ${errorMessage(err)} – continuing anyway`,
+      );
     }
   }
 
@@ -77,7 +79,7 @@ export class MinioService implements OnModuleInit {
         },
       );
     } catch (err) {
-      this.logger.error(`MinIO putObject failed: ${err.message}`);
+      this.logger.error(`MinIO putObject failed: ${errorMessage(err)}`);
       throw new InternalServerErrorException("Failed to store image");
     }
 
@@ -100,7 +102,7 @@ export class MinioService implements OnModuleInit {
         expiresSeconds,
       );
     } catch (err) {
-      this.logger.error(`presignedGetObject failed: ${err.message}`);
+      this.logger.error(`presignedGetObject failed: ${errorMessage(err)}`);
       throw new InternalServerErrorException(
         "Failed to generate presigned URL",
       );
@@ -115,7 +117,7 @@ export class MinioService implements OnModuleInit {
       await this.client.removeObject(this.bucket, objectName);
       this.logger.debug(`Deleted object: ${objectName}`);
     } catch (err) {
-      this.logger.error(`MinIO removeObject failed: ${err.message}`);
+      this.logger.error(`MinIO removeObject failed: ${errorMessage(err)}`);
       throw new InternalServerErrorException("Failed to delete image");
     }
   }

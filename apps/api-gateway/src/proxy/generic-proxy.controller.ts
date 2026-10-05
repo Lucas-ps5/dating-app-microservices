@@ -2,6 +2,7 @@ import {
   All,
   Body,
   Controller,
+  Headers,
   HttpStatus,
   MethodNotAllowedException,
   NotFoundException,
@@ -13,8 +14,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { ApiBearerAuth, ApiExcludeController, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
-import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
+import { AuthenticatedUser, CurrentUser } from "@app/common";
 import {
   HttpProxyService,
   type ProxyHttpMethod,
@@ -87,6 +87,7 @@ export class GenericProxyController {
     @Body() body: unknown,
     @Query() query: Record<string, unknown>,
     @CurrentUser() user: AuthenticatedUser | undefined,
+    @Headers("authorization") authorization: string | undefined,
     @Req() request: Request,
     @Res() response: Response,
   ) {
@@ -110,11 +111,11 @@ export class GenericProxyController {
       {
         body,
         params: query,
-        headers: this.userHeaders(user),
+        headers: this.userHeaders(user, authorization),
       },
     );
 
-    if (proxied.status === HttpStatus.NO_CONTENT) {
+    if (proxied.status === Number(HttpStatus.NO_CONTENT)) {
       return response.status(proxied.status).send();
     }
 
@@ -141,10 +142,23 @@ export class GenericProxyController {
     return `/${[prefix, ...path].filter(Boolean).join("/")}`;
   }
 
-  private userHeaders(user?: AuthenticatedUser): Record<string, string> {
-    if (!user) return {};
+  /**
+   * Forwards the caller's original bearer token so each backend service can
+   * verify the JWT itself. The `x-user-*` headers are kept for logging and
+   * backwards compatibility only — no service trusts them for authorisation.
+   */
+  private userHeaders(
+    user?: AuthenticatedUser,
+    authorization?: string,
+  ): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (authorization) {
+      headers.authorization = authorization;
+    }
+    if (!user) return headers;
 
     return {
+      ...headers,
       [UserHeaders.USER_ID]: user.id,
       [UserHeaders.USER_EMAIL]: user.email ?? "",
       [UserHeaders.USER_ROLES]: user.roles.join(","),

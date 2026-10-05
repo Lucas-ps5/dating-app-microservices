@@ -1,3 +1,5 @@
+import { keycloakConfiguration } from "@app/common";
+
 export default () => ({
   port: parseInt(process.env.PORT || "3003", 10),
   nodeEnv: process.env.NODE_ENV || "development",
@@ -20,8 +22,9 @@ export default () => ({
   database: {
     host: process.env.DB_HOST || "localhost",
     port: parseInt(process.env.DB_PORT || "5435", 10),
-    user: process.env.DB_USER || "hmeet_media",
+    username: process.env.DB_USER || "hmeet_media",
     password: process.env.DB_PASSWORD || "hmeet_media_password",
-    database: process.env.DB_NAME || "hmeet_media",
+    name: process.env.DB_NAME || "hmeet_media",
   },
+  ...keycloakConfiguration(),
 });

@@ -138,13 +138,15 @@ export class LikesService {
         `Mutual like detected between ${like.senderId} and ${like.receiverId}; created match ${match.newId}`,
       );
     } catch (error) {
-      if (error instanceof Error && error.name !== "ConflictException") {
-        throw error;
+      // Nest's HttpException reports `name === "HttpException"`, so the match
+      // status has to be inspected instead of the error name.
+      if (error instanceof ConflictException) {
+        this.logger.log(
+          `Match already existed for ${like.senderId} and ${like.receiverId}`,
+        );
+        return;
       }
-
-      this.logger.log(
-        `Match already existed for ${like.senderId} and ${like.receiverId}`,
-      );
+      throw error;
     }
   }
 
@@ -223,17 +225,6 @@ export class LikesService {
     }
 
     return like;
-  }
-
-  async update(
-    id: string,
-    updateLikeDto: Partial<CreateLikeDto>,
-  ): Promise<Like> {
-    const like = await this.findOne(id);
-
-    Object.assign(like, updateLikeDto);
-
-    return this.likeRepo.save(like);
   }
 
   async countMySentLikes(userId: string): Promise<CountResponse> {

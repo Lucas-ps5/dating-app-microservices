@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
-import { AuthModule } from "./auth/auth.module";
+import { AuthModule } from "@app/common";
 import { MediaProxyModule } from "./media/media-proxy.module";
 import { GenericProxyModule } from "./proxy/generic-proxy.module";
 import configuration from "./config/configuration";

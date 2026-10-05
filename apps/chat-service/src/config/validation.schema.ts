@@ -1,4 +1,5 @@
 import * as Joi from "joi";
+import { keycloakEnvSchema } from "@app/common";
 
 export const validationSchema = Joi.object({
   PORT: Joi.number().default(3002),
@@ -12,4 +13,5 @@ export const validationSchema = Joi.object({
   CHAT_DB_NAME: Joi.string().default("hmeet_chat"),
   KAFKA_BROKERS: Joi.string().default("localhost:29092"),
   KAFKA_GROUP_ID: Joi.string().default("chat-service"),
+  ...keycloakEnvSchema,
 });

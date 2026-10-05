@@ -1,11 +1,8 @@
-import { HttpException, Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
-import {
-  isAxiosError,
-  type AxiosRequestConfig,
-  type AxiosResponse,
-} from "axios";
+import { type AxiosRequestConfig, type AxiosResponse } from "axios";
+import { rethrowUpstreamError } from "./http-error";
 
 export type ProxyHttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
@@ -13,7 +10,15 @@ export interface ProxyOptions {
   body?: unknown;
   params?: Record<string, unknown>;
   headers?: Record<string, string>;
+  /** Overrides the default per-request timeout, e.g. for large uploads. */
+  timeoutMs?: number;
 }
+
+/**
+ * Without a timeout a hung downstream service stalls the gateway request
+ * handler indefinitely, tying up sockets and exhausting the connection pool.
+ */
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class HttpProxyService {
@@ -31,6 +36,7 @@ export class HttpProxyService {
     const config: AxiosRequestConfig = {
       params: options.params,
       headers: options.headers,
+      timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     };
 
     this.logger.debug(`Proxying ${method.toUpperCase()} -> ${url}`);
@@ -55,14 +61,8 @@ export class HttpProxyService {
           return await firstValueFrom(this.httpService.delete<T>(url, config));
       }
     } catch (error: unknown) {
-      if (isAxiosError(error) && error.response) {
-        this.logger.error(`Proxy error for ${url}: ${error.response.status}`);
-        throw new HttpException(error.response.data, error.response.status);
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Proxy error for ${url}: ${message}`);
-      throw error;
+      this.logger.error(`Proxy error for ${url}`);
+      rethrowUpstreamError(error);
     }
   }
 }

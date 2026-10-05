@@ -1,4 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { MinioService } from "../minio/minio.service";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import { KAFKA_TOPICS, ImageDeletedEvent } from "@app/common";
@@ -13,6 +18,8 @@ export interface UploadResult {
   size: number;
   mimetype: string;
 }
+
+const ADMIN_ROLE = "admin";
 
 @Injectable()
 export class ImagesService {
@@ -49,6 +56,8 @@ export class ImagesService {
       imageType: mimetype,
       imageSize: buffer.length,
       imageUrl: url,
+      ownerId,
+      context,
     });
 
     try {
@@ -67,17 +76,50 @@ export class ImagesService {
     return { objectName, url, size: buffer.length, mimetype };
   }
 
+  /**
+   * Loads an object row and asserts the caller owns it. Without this check any
+   * authenticated user could presign or delete any object in the bucket by
+   * guessing its name.
+   */
+  private async findOwned(
+    objectName: string,
+    requesterId: string,
+    requesterRoles: string[] = [],
+  ): Promise<Image> {
+    const image = await this.imagesRepo.findOne({
+      where: { imageName: objectName },
+    });
+
+    if (!image) {
+      throw new NotFoundException(`Image ${objectName} not found`);
+    }
+
+    if (image.ownerId !== requesterId && !requesterRoles.includes(ADMIN_ROLE)) {
+      throw new ForbiddenException("You do not own this image");
+    }
+
+    return image;
+  }
+
   async getPresignedUrl(
     objectName: string,
+    requesterId: string,
+    requesterRoles: string[] = [],
     expiresSeconds = 3600,
   ): Promise<string> {
+    await this.findOwned(objectName, requesterId, requesterRoles);
     return this.minio.presignedUrl(objectName, expiresSeconds);
   }
 
-  async deleteImage(objectName: string, ownerId: string): Promise<void> {
+  async deleteImage(
+    objectName: string,
+    ownerId: string,
+    requesterRoles: string[] = [],
+  ): Promise<void> {
+    await this.findOwned(objectName, ownerId, requesterRoles);
+
     await this.minio.delete(objectName);
 
-    // Add this line to remove the record from your database as well
     await this.imagesRepo.delete({ imageName: objectName });
 
     const event: ImageDeletedEvent = { objectName, ownerId };

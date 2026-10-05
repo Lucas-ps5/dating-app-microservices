@@ -6,15 +6,27 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Kafka, Consumer, EachMessagePayload } from "kafkajs";
-import { KAFKA_TOPICS } from "@app/common";
+import {
+  errorMessage,
+  KAFKA_TOPICS,
+  MatchCreatedEvent,
+  UserDeletedEvent,
+} from "@app/common";
+import { MatchesService } from "../matches/matches.service";
+import { ConversationsService } from "../messages/conversations.service";
 
 @Injectable()
 export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KafkaConsumerService.name);
   private kafka: Kafka;
   private consumer: Consumer;
+  private connected = false;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly matchesService: MatchesService,
+    private readonly conversationsService: ConversationsService,
+  ) {
     const brokers = this.configService.get<string[]>("kafka.brokers") ?? [
       "localhost:29092",
     ];
@@ -28,7 +40,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.consumer.connect();
       await this.consumer.subscribe({
-        topics: [KAFKA_TOPICS.USER_UPDATED, KAFKA_TOPICS.USER_DELETED],
+        topics: [KAFKA_TOPICS.MATCH_CREATED, KAFKA_TOPICS.USER_DELETED],
         fromBeginning: false,
       });
       await this.consumer.run({
@@ -36,16 +48,22 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
           await this.handleMessage(payload);
         },
       });
+      this.connected = true;
       this.logger.log("Kafka consumer connected and listening");
     } catch (err) {
       this.logger.warn(
-        `Kafka consumer failed to connect: ${err.message}. Continuing without Kafka.`,
+        `Kafka consumer failed to connect: ${errorMessage(err)}. Continuing without Kafka.`,
       );
     }
   }
 
   async onModuleDestroy() {
-    await this.consumer.disconnect();
+    if (!this.connected) return;
+    try {
+      await this.consumer.disconnect();
+    } catch {
+      // Already disconnected
+    }
   }
 
   private async handleMessage({ topic, message }: EachMessagePayload) {
@@ -53,23 +71,51 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     if (!value) return;
 
     try {
-      const payload = JSON.parse(value);
+      const payload: unknown = JSON.parse(value);
       switch (topic) {
-        case KAFKA_TOPICS.USER_UPDATED:
-          // Future: update denormalised sender name cache
-          this.logger.log(`user.updated received: ${JSON.stringify(payload)}`);
+        case KAFKA_TOPICS.MATCH_CREATED:
+          await this.onMatchCreated(payload as MatchCreatedEvent);
           break;
         case KAFKA_TOPICS.USER_DELETED:
-          // Future: deactivate matches for deleted user
-          this.logger.log(`user.deleted received: ${JSON.stringify(payload)}`);
+          await this.onUserDeleted(payload as UserDeletedEvent);
           break;
         default:
           this.logger.warn(`No handler for topic: ${topic}`);
       }
     } catch (err) {
       this.logger.error(
-        `Error handling message on topic "${topic}": ${err.message}`,
+        `Error handling message on topic "${topic}": ${errorMessage(err)}`,
       );
     }
+  }
+
+  private async onMatchCreated(event: MatchCreatedEvent): Promise<void> {
+    const { matchId, user1Id, user2Id } = event;
+    if (!matchId || !user1Id || !user2Id) {
+      this.logger.warn(
+        `Ignoring malformed match.created: ${JSON.stringify(event)}`,
+      );
+      return;
+    }
+
+    await this.matchesService.recordMatchFromEvent(user1Id, user2Id, matchId);
+    await this.conversationsService.ensureConversationExists(user1Id, user2Id);
+
+    this.logger.log(`Match ${matchId} projected into chat-service`);
+  }
+
+  private async onUserDeleted(event: UserDeletedEvent): Promise<void> {
+    const userId = event?.keycloakId;
+    if (!userId) {
+      this.logger.warn(
+        `Ignoring malformed user.deleted: ${JSON.stringify(event)}`,
+      );
+      return;
+    }
+
+    const affected = await this.matchesService.deactivateMatchesForUser(userId);
+    this.logger.log(
+      `Deactivated ${affected} matches for deleted user ${userId}`,
+    );
   }
 }

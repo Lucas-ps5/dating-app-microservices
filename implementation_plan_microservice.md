@@ -50,7 +50,7 @@ Add new dependencies:
 - `@nestjs/microservices` – Kafka client
 - `@nestjs/typeorm` + `typeorm` + `pg` – DB ORM for both services
 - `@nestjs/swagger` + `swagger-ui-express` – API docs on gateway
-- `@nestjs/websockets` + `@nestjs/platform-socket.io` + `socket.io` – Chat WebSocket
+- `@nestjs/axios` – gateway→service HTTP proxying (timeouts, status passthrough)
 - `class-validator` + `class-transformer` – DTO validation
 - `kafkajs` – Kafka client
 - `multer` + `@types/multer` – file upload
@@ -192,16 +192,12 @@ Import `TypeOrmModule`, `MatchesModule`, `MessagesModule`, `KafkaModule`.
 
 #### [NEW] `apps/chat-service/src/messages/messages.service.ts`
 - `getMessages(matchId, pagination)` – paginated history
-- `sendMessage(matchId, senderId, content)` – save + emit Kafka + broadcast via WS
+- `sendMessage(matchId, senderId, content)` – save + emit Kafka
 
-#### [NEW] `apps/chat-service/src/gateways/chat.gateway.ts`
-Socket.IO gateway:
-- `handleConnection` – verify JWT, join room `match:{matchId}`
-- `handleDisconnect`
-- `message` event – calls `messagesService.sendMessage`, broadcasts to room
+Messaging is REST-only. There is no WebSocket gateway; clients poll `GET /messages/history` and `POST /messages/send-message`.
 
 #### [NEW] Kafka consumer
-Listens to `user.updated` and `user.deleted` to sync denormalized sender names in messages.
+Listens to `match.created` and `user.deleted` to maintain the local match projection and conversation records.
 
 #### [NEW] Kafka producer
 Emits `match.created`, `message.sent`.
@@ -263,4 +259,4 @@ npm run test -- --testPathPattern=chat-service
    curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/users/profile
    ```
 
-6. **WebSocket**: Connect to `ws://localhost:3002` with Socket.IO client, join a match room, verify real-time messaging.
+6. **Chat (REST only)**: `POST /api/chat/conversations/send-message` with the bearer token, then read the history back with `GET /api/chat/conversations/:id/messages`.

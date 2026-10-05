@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { AuthModule } from "@app/common";
 import matchesConfiguration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
 import { Like } from "../likes/entities/like.entity";
@@ -34,6 +35,7 @@ import { MatchesModule } from "../matches/matches.module";
     KafkaModule,
     LikesModule,
     MatchesModule,
+    AuthModule,
   ],
 })
 export class MatchesAppModule {}

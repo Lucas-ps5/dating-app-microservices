@@ -3,23 +3,25 @@ import {
   Get,
   Post,
   Param,
-  Headers,
   Body,
   Put,
+  UseGuards,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiTags, ApiOperation } from "@nestjs/swagger";
 import { MessagesService } from "./messages.service";
-import { UserHeaders } from "@app/common/types/types";
+import { CurrentUser, JwtAuthGuard } from "@app/common";
 import { SendMessageDto } from "./dto/message.dto";
 
 @ApiTags("chat")
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller("chat")
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Get("my/conversations")
   @ApiOperation({ summary: "List conversations for the authenticated user" })
-  async myConversations(@Headers(UserHeaders.USER_ID) userId: string) {
+  async myConversations(@CurrentUser("id") userId: string) {
     return this.messagesService.getMyConversations(userId);
   }
 
@@ -27,8 +29,11 @@ export class MessagesController {
   @ApiOperation({
     summary: "Get conversation by ID for the authenticated user",
   })
-  async myConversation(@Param("conversationId") conversationId: string) {
-    return this.messagesService.getConversationById(conversationId);
+  async myConversation(
+    @CurrentUser("id") userId: string,
+    @Param("conversationId") conversationId: string,
+  ) {
+    return this.messagesService.getConversationById(conversationId, userId);
   }
 
   @Post("conversations/send-message")
@@ -36,7 +41,7 @@ export class MessagesController {
     summary: "Send a message",
   })
   async sendMessage(
-    @Headers(UserHeaders.USER_ID) userId: string,
+    @CurrentUser("id") userId: string,
     @Body() dto: SendMessageDto,
   ) {
     return this.messagesService.sendMessage(
@@ -52,7 +57,7 @@ export class MessagesController {
     summary: "Mark messages as read in a conversation",
   })
   async readMessages(
-    @Headers(UserHeaders.USER_ID) userId: string,
+    @CurrentUser("id") userId: string,
     @Param("conversationId") conversationId: string,
   ) {
     return this.messagesService.readMessages(userId, conversationId);
@@ -62,7 +67,7 @@ export class MessagesController {
   @ApiOperation({
     summary: "Get total unread messages count for the authenticated user",
   })
-  async myUnreadCount(@Headers(UserHeaders.USER_ID) userId: string) {
+  async myUnreadCount(@CurrentUser("id") userId: string) {
     return this.messagesService.getAllMyUnreadMessagesCount(userId);
   }
 }

@@ -5,6 +5,9 @@
   "root": "apps/api-gateway",
   "sourceRoot": "apps/api-gateway/src",
   "entryFile": "main",
+  "compilerOptions": {
+    "deleteOutDir": false
+  },
   "projects": {
     "api-gateway": {
       "type": "application",

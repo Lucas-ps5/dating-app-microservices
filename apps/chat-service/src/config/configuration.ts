@@ -1,3 +1,5 @@
+import { keycloakConfiguration } from "@app/common";
+
 export default () => ({
   port: parseInt(process.env.PORT || "3002", 10),
   nodeEnv: process.env.NODE_ENV || "development",
@@ -12,4 +14,5 @@ export default () => ({
     brokers: (process.env.KAFKA_BROKERS || "localhost:29092").split(","),
     groupId: process.env.KAFKA_GROUP_ID || "chat-service",
   },
+  ...keycloakConfiguration(),
 });

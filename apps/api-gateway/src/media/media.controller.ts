@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Delete,
+  Headers,
   Param,
   Query,
   UseGuards,
@@ -22,9 +23,7 @@ import {
   ApiBody,
   ApiQuery,
 } from "@nestjs/swagger";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
+import { AuthenticatedUser, CurrentUser, JwtAuthGuard } from "@app/common";
 import { MediaProxyService } from "./media-proxy.service";
 
 @ApiTags("media")
@@ -58,14 +57,20 @@ export class MediaController {
       },
     },
   })
-  @ApiOperation({ summary: "Upload an image — stored in MinIO" })
+  @ApiOperation({ summary: "Upload an image â€” stored in MinIO" })
   async uploadImage(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers("authorization") authorization: string | undefined,
     @Query("context") context = "general",
   ) {
     if (!file) throw new BadRequestException("No file provided");
-    const res = await this.mediaProxy.uploadImage(file, user, context);
+    const res = await this.mediaProxy.uploadImage(
+      file,
+      user,
+      authorization,
+      context,
+    );
     return res.data;
   }
 
@@ -79,12 +84,14 @@ export class MediaController {
     @Query("objectName") objectName: string,
     @Query("expires") expires = "3600",
     @CurrentUser() user: AuthenticatedUser,
+    @Headers("authorization") authorization: string | undefined,
   ) {
     if (!objectName) throw new BadRequestException("objectName is required");
     const res = await this.mediaProxy.getPresignedUrl(
       objectName,
       +expires,
       user,
+      authorization,
     );
     return res.data;
   }
@@ -95,7 +102,8 @@ export class MediaController {
   async deleteImage(
     @Param("objectName") objectName: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers("authorization") authorization: string | undefined,
   ) {
-    await this.mediaProxy.deleteImage(objectName, user);
+    await this.mediaProxy.deleteImage(objectName, user, authorization);
   }
 }

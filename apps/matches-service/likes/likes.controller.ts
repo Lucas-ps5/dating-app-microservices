@@ -1,16 +1,24 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
   Query,
-  Headers,
+  UseGuards,
 } from "@nestjs/common";
+import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { CreateLikeDto } from "./dto/create-like.dto";
+import { RemoveLikeDto } from "./dto/remove-like.dto";
 import { LikesService } from "./likes.service";
-import { UserHeaders } from "@app/common/types/types";
+import { AuthenticatedUser, CurrentUser, JwtAuthGuard } from "@app/common";
 
+const ADMIN_ROLE = "admin";
+
+@ApiTags("likes")
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller("likes")
 export class LikesController {
   constructor(private readonly likesService: LikesService) {}
@@ -18,15 +26,15 @@ export class LikesController {
   @Post("create")
   create(
     @Body() createLikeDto: CreateLikeDto,
-    @Headers(UserHeaders.USER_ID) userId: string,
+    @CurrentUser("id") userId: string,
   ) {
     return this.likesService.create(createLikeDto, userId);
   }
 
   @Post("dislike")
   dislike(
-    @Body() removeLikeDto: CreateLikeDto,
-    @Headers(UserHeaders.USER_ID) userId: string,
+    @Body() removeLikeDto: RemoveLikeDto,
+    @CurrentUser("id") userId: string,
   ) {
     return this.likesService.dislike(userId, removeLikeDto.receiverId);
   }
@@ -37,8 +45,8 @@ export class LikesController {
   }
 
   @Get("my/received")
-  async findAllForUser(
-    @Headers(UserHeaders.USER_ID) userId: string,
+  findAllForUser(
+    @CurrentUser("id") userId: string,
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
@@ -46,8 +54,8 @@ export class LikesController {
   }
 
   @Get("my/sent")
-  async findAllSentLikes(
-    @Headers(UserHeaders.USER_ID) userId: string,
+  findAllSentLikes(
+    @CurrentUser("id") userId: string,
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
@@ -55,17 +63,25 @@ export class LikesController {
   }
 
   @Get("my/received/count")
-  async countMyReceivedLikes(@Headers(UserHeaders.USER_ID) userId: string) {
+  countMyReceivedLikes(@CurrentUser("id") userId: string) {
     return this.likesService.countMyReceivedLikes(userId);
   }
 
   @Get("my/sent/count")
-  async countMySentLikes(@Headers(UserHeaders.USER_ID) userId: string) {
+  countMySentLikes(@CurrentUser("id") userId: string) {
     return this.likesService.countMySentLikes(userId);
   }
 
   @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.likesService.findOne(id);
+  async findOne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ) {
+    const like = await this.likesService.findOne(id);
+    const involved = like.senderId === user.id || like.receiverId === user.id;
+    if (!involved && !user.roles?.includes(ADMIN_ROLE)) {
+      throw new ForbiddenException("This like does not involve you");
+    }
+    return like;
   }
 }

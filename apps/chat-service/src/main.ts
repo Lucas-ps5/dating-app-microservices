@@ -19,12 +19,9 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api");
 
-  app.enableCors({ origin: "*", credentials: true });
-
   const port = configService.get<number>("port") ?? 3002;
   await app.listen(port);
 
-  logger.log(`🚀 Chat Service running on: http://localhost:${port}/api`);
-  logger.log(`🔌 WebSocket available at:  ws://localhost:${port}`);
+  logger.log(`Chat Service running on: http://localhost:${port}/api`);
 }
 void bootstrap();

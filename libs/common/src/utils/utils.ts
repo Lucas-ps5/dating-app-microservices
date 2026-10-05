@@ -32,3 +32,26 @@ export function calculateDistance(
 export function toRad(degrees: number): number {
   return degrees * (Math.PI / 180);
 }
+
+/**
+ * Normalises a caught value into a loggable string. `catch` bindings are
+ * `unknown` in strict TypeScript, so reading `.message` directly is unsafe and
+ * would throw again inside the logger.
+ */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return String(error);
+}

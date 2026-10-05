@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ConflictException,
@@ -8,13 +9,14 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, QueryFailedError } from "typeorm";
 import { ConfigService } from "@nestjs/config";
-import { Gender, User } from "./user.entity";
+import { User } from "./user.entity";
 import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
   CreationResponse,
   FieldToExtractCodes,
   KAFKA_TOPICS,
+  UserDeletedEvent,
   calculateDistance,
 } from "@app/common";
 import KcAdminClient from "@keycloak/keycloak-admin-client";
@@ -28,7 +30,7 @@ export interface PaginatedUsers {
   totalPages?: number;
 }
 
-const FIELD_MAP = {
+const FIELD_MAP: Record<FieldToExtractCodes, readonly (keyof User)[]> = {
   "Code-1": [
     "id",
     "username",
@@ -52,6 +54,61 @@ const FIELD_MAP = {
     "longitude",
   ],
 } as const;
+
+const DEFAULT_FIELD_CODE: FieldToExtractCodes = "Code-1";
+
+/**
+ * Resolves the column projection for a field code, rejecting unknown values
+ * instead of spreading `undefined` into the TypeORM `select` array.
+ */
+function resolveFields(code?: FieldToExtractCodes): (keyof User)[] {
+  if (!code) return [...FIELD_MAP[DEFAULT_FIELD_CODE]];
+
+  const fields = FIELD_MAP[code];
+  if (!fields) {
+    throw new BadRequestException(
+      `Unknown fieldToExtractCodes "${code}". Expected one of: ${Object.keys(FIELD_MAP).join(", ")}`,
+    );
+  }
+  return [...fields];
+}
+
+/**
+ * Postgres `numeric`/`decimal` columns come back from `pg` as strings, and a
+ * legitimate coordinate of 0 is falsy — so normalise before doing maths.
+ */
+function toCoordinate(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function withDistance(
+  user: User,
+  currentUserLat?: number,
+  currentUserLon?: number,
+): UserWithDistance {
+  const userLat = toCoordinate(user.latitude);
+  const userLon = toCoordinate(user.longitude);
+  const viewerLat = toCoordinate(currentUserLat);
+  const viewerLon = toCoordinate(currentUserLon);
+
+  if (userLat === undefined || userLon === undefined) {
+    return { ...user };
+  }
+  if (viewerLat === undefined || viewerLon === undefined) {
+    return { ...user };
+  }
+
+  const distanceKm = calculateDistance(viewerLat, viewerLon, userLat, userLon);
+
+  return {
+    ...user,
+    latitude: undefined,
+    longitude: undefined,
+    distance: Math.round(distanceKm * 10) / 10,
+  };
+}
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -204,124 +261,63 @@ export class UsersService implements OnModuleInit {
 
   async findById(
     id: string,
-    fieldToExtractCodes: FieldToExtractCodes,
+    fieldToExtractCodes?: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
   ): Promise<UserWithDistance> {
-    const fieldsToSelect = FIELD_MAP[fieldToExtractCodes];
-
     const user = await this.usersRepo.findOne({
       where: { id },
-      select: [...fieldsToSelect],
+      select: resolveFields(fieldToExtractCodes),
     });
 
     if (!user) {
       throw new NotFoundException(`User ${id} not found`);
     }
 
-    const userWithDistance: UserWithDistance = { ...user };
-    if (user.latitude && user.longitude && currentUserLat && currentUserLon) {
-      const distanceKm = calculateDistance(
-        currentUserLat,
-        currentUserLon,
-        user.latitude,
-        user.longitude,
-      );
-      userWithDistance.distance = Math.round(distanceKm * 10) / 10;
-    }
-
-    return userWithDistance;
+    return withDistance(user, currentUserLat, currentUserLon);
   }
 
   async findByUsername(
     username: string,
-    fieldToExtractCodes: FieldToExtractCodes,
+    fieldToExtractCodes?: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
   ): Promise<Partial<UserWithDistance>> {
-    const fieldsToSelect = FIELD_MAP[fieldToExtractCodes];
-
     const user = await this.usersRepo.findOne({
       where: { username },
-      select: [...fieldsToSelect],
+      select: resolveFields(fieldToExtractCodes),
     });
 
     if (!user) {
       throw new NotFoundException(`User ${username} not found`);
     }
 
-    const userWithDistance: UserWithDistance = { ...user };
-    if (user.latitude && user.longitude && currentUserLat && currentUserLon) {
-      const distanceKm = calculateDistance(
-        currentUserLat,
-        currentUserLon,
-        user.latitude,
-        user.longitude,
-      );
-      userWithDistance.distance = Math.round(distanceKm * 10) / 10;
-    }
-
-    return userWithDistance;
+    return withDistance(user, currentUserLat, currentUserLon);
   }
 
-  async allUsers({
-    currentUserLat,
-    currentUserLon,
-    page,
-    limit,
-    gender,
-  }: {
-    currentUserLat?: number;
-    currentUserLon?: number;
-    page: number;
-    limit: number;
-    gender?: Gender;
-  }): Promise<PaginatedUsers> {
-    const sanitizedPage = Math.max(1, Math.floor(page));
-    const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
-
-    const [users, total] = await this.usersRepo.findAndCount({
-      where: { gender },
-      order: { createdAt: "DESC" },
-      select: [
-        "id",
-        "username",
-        "photos",
-        "title",
-        "gender",
-        "birthdate",
-        "isActive",
-        "latitude",
-        "longitude",
-      ],
-      skip: (sanitizedPage - 1) * sanitizedLimit,
-      take: sanitizedLimit,
-    });
-
-    const usersWithDistance: UserWithDistance[] = this.usersToUsersWithDistance(
-      users,
-      currentUserLat,
-      currentUserLon,
-    );
-
-    const totalPages = Math.ceil(total / sanitizedLimit);
-
-    return {
-      data: usersWithDistance,
-      total,
-      page: sanitizedPage,
-      limit: sanitizedLimit,
-      totalPages,
-    };
+  /**
+   * Loads the full entity for mutation. Never pass a column-projected entity
+   * to `save()` — TypeORM writes `undefined` back for unselected columns,
+   * silently wiping them.
+   */
+  private async findFullById(id: string): Promise<User> {
+    const user = await this.usersRepo.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`No profile found for keycloakId=${id}`);
+    }
+    return user;
   }
 
   async addPhoto(id: string, filename: string): Promise<User> {
-    const user = await this.findById(id, "Code-2");
+    const user = await this.findFullById(id);
     user.photos = [...(user.photos ?? []), filename];
     return this.usersRepo.save(user);
   }
 
-  async discover(query: DiscoverQueryDto): Promise<PaginatedUsers> {
+  async discover(
+    query: DiscoverQueryDto,
+    excludeUserId?: string,
+  ): Promise<PaginatedUsers> {
     const { gender, ageMin, ageMax, page = 1, limit = 20 } = query;
     const sanitizedPage = Math.max(1, Math.floor(page));
     const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
@@ -330,6 +326,9 @@ export class UsersService implements OnModuleInit {
       .createQueryBuilder("user")
       .where("user.isActive = :isActive", { isActive: true });
 
+    if (excludeUserId) {
+      qb.andWhere("user.id != :excludeUserId", { excludeUserId });
+    }
     if (gender) {
       qb.andWhere("user.gender = :gender", { gender });
     }
@@ -349,6 +348,7 @@ export class UsersService implements OnModuleInit {
     }
 
     const total = await qb.getCount();
+
     const data = await qb
       .select([
         "user.id",
@@ -356,6 +356,8 @@ export class UsersService implements OnModuleInit {
         "user.photos",
         "user.title",
         "user.birthdate",
+        "user.latitude",
+        "user.longitude",
       ])
       .skip((sanitizedPage - 1) * sanitizedLimit)
       .take(sanitizedLimit)
@@ -364,10 +366,8 @@ export class UsersService implements OnModuleInit {
     const totalPages = Math.ceil(total / sanitizedLimit);
 
     return {
-      data: this.usersToUsersWithDistance(
-        data,
-        query.currentUserLat,
-        query.currentUserLon,
+      data: data.map((user) =>
+        withDistance(user, query.currentUserLat, query.currentUserLon),
       ),
       total,
       page: sanitizedPage,
@@ -377,43 +377,13 @@ export class UsersService implements OnModuleInit {
   }
 
   async softDelete(id: string): Promise<void> {
-    const user = await this.findById(id, "Code-2");
+    const user = await this.findFullById(id);
     user.isActive = false;
     await this.usersRepo.save(user);
 
-    await this.kafkaProducer.emit(KAFKA_TOPICS.USER_DELETED, { id });
-    this.logger.log(`Soft-deleted user keycloakId=${id}`);
-  }
-
-  private usersToUsersWithDistance(
-    users: User[],
-    currentUserLat?: number,
-    currentUserLon?: number,
-  ): UserWithDistance[] {
-    return users.map((user) => {
-      if (
-        !user.latitude ||
-        !user.longitude ||
-        !currentUserLat ||
-        !currentUserLon
-      ) {
-        return user;
-      }
-
-      const distanceKm = calculateDistance(
-        currentUserLat,
-        currentUserLon,
-        user.latitude,
-        user.longitude,
-      );
-
-      user.latitude = undefined;
-      user.longitude = undefined;
-
-      return {
-        ...user,
-        distance: Math.round(distanceKm * 10) / 10,
-      };
+    await this.kafkaProducer.emit<UserDeletedEvent>(KAFKA_TOPICS.USER_DELETED, {
+      keycloakId: id,
     });
+    this.logger.log(`Soft-deleted user keycloakId=${id}`);
   }
 }

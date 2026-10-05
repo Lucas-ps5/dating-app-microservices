@@ -6,12 +6,14 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Kafka, Producer } from "kafkajs";
+import { errorMessage } from "@app/common";
 
 @Injectable()
 export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KafkaProducerService.name);
   private kafka: Kafka;
   private producer: Producer;
+  private connected = false;
 
   constructor(private readonly configService: ConfigService) {
     const brokers = this.configService.get<string[]>("kafka.brokers") ?? [
@@ -25,15 +27,33 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    await this.producer.connect();
-    this.logger.log("Kafka producer connected");
+    try {
+      await this.producer.connect();
+      this.connected = true;
+      this.logger.log("Kafka producer connected");
+    } catch (err) {
+      // A broker outage must not stop the service from serving REST traffic.
+      this.logger.warn(
+        `Kafka producer failed to connect: ${errorMessage(err)}. Continuing without Kafka.`,
+      );
+    }
   }
 
   async onModuleDestroy() {
-    await this.producer.disconnect();
+    if (!this.connected) return;
+    try {
+      await this.producer.disconnect();
+    } catch {
+      // Already disconnected
+    }
   }
 
-  async emit(topic: string, payload: unknown): Promise<void> {
+  async emit<T>(topic: string, payload: T): Promise<void> {
+    if (!this.connected) {
+      this.logger.warn(`Skipping emit to "${topic}": producer not connected`);
+      return;
+    }
+
     try {
       await this.producer.send({
         topic,
@@ -41,7 +61,9 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
       });
       this.logger.debug(`Emitted event to topic "${topic}"`);
     } catch (err) {
-      this.logger.error(`Failed to emit to topic "${topic}": ${err.message}`);
+      this.logger.error(
+        `Failed to emit to topic "${topic}": ${errorMessage(err)}`,
+      );
     }
   }
 }

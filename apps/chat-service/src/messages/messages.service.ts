@@ -1,16 +1,19 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, QueryFailedError, Repository } from "typeorm";
 import { Message, MessageStatus, MessageType } from "./message.entity";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import { CountResponse, KAFKA_TOPICS, MessageSentEvent } from "@app/common";
 import { Conversation } from "./conversation.entity";
+import { MatchesService } from "../matches/matches.service";
 
-export interface SendMessageDto {
-  matchId: string;
-  senderId: string;
-  content: string;
-  type?: MessageType;
-}
+const MAX_SEND_ATTEMPTS = 3;
 
 export type MessageResponseDto = Omit<Message, "sentAt" | "readAt"> & {
   readAt?: string | null;
@@ -32,12 +35,15 @@ export type ConversationData = Omit<Conversation, "messages"> & {
 @Injectable()
 export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
-  private conversationRepo: Repository<Conversation>;
-  private messageRepo: Repository<Message>;
 
   constructor(
+    @InjectRepository(Conversation)
+    private readonly conversationRepo: Repository<Conversation>,
+    @InjectRepository(Message)
+    private readonly messageRepo: Repository<Message>,
     private readonly dataSource: DataSource,
     private readonly kafkaProducer: KafkaProducerService,
+    private readonly matchesService: MatchesService,
   ) {}
 
   async sendMessage(
@@ -45,7 +51,17 @@ export class MessagesService {
     receiverId: string,
     content: string,
     type: MessageType = MessageType.TEXT,
+    attempt = 1,
   ): Promise<Message> {
+    if (senderId === receiverId) {
+      throw new BadRequestException("You cannot message yourself");
+    }
+
+    if (!(await this.matchesService.areMatched(senderId, receiverId))) {
+      throw new ForbiddenException(
+        "You can only message users you have matched with",
+      );
+    }
     // 1. THE GOLDEN RULE: Sort UUIDs alphabetically
     const sortedIds = [senderId, receiverId].sort();
     const user1Id = sortedIds[0];
@@ -116,12 +132,25 @@ export class MessagesService {
       // 8. ROLLBACK TRANSACTION
       await queryRunner.rollbackTransaction();
 
-      // Handle the race condition
+      // Handle the race condition where a concurrent request created the
+      // conversation first. Bounded retry instead of unbounded recursion.
       if (
         error instanceof QueryFailedError &&
         (error.driverError as { code?: string })?.code === "23505"
       ) {
-        return this.sendMessage(senderId, receiverId, content, type);
+        if (attempt >= MAX_SEND_ATTEMPTS) {
+          this.logger.error(
+            `Failed to create conversation for ${user1Id}/${user2Id} after ${attempt} attempts`,
+          );
+          throw error;
+        }
+        return this.sendMessage(
+          senderId,
+          receiverId,
+          content,
+          type,
+          attempt + 1,
+        );
       }
 
       throw error;
@@ -147,14 +176,17 @@ export class MessagesService {
 
   async getConversationById(
     conversationId: string,
-  ): Promise<ConversationData | null> {
+    userId: string,
+  ): Promise<ConversationData> {
     const conversation = await this.conversationRepo.findOne({
       where: { id: conversationId },
     });
 
     if (!conversation) {
-      return null;
+      throw new NotFoundException("Conversation not found");
     }
+
+    this.assertParticipant(conversation, userId);
 
     const messages = await this.getConversationMessages(conversation.id);
 
@@ -170,8 +202,31 @@ export class MessagesService {
     };
   }
 
+  private assertParticipant(
+    conversation: Pick<Conversation, "user1Id" | "user2Id">,
+    userId: string,
+  ): void {
+    if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+      throw new ForbiddenException(
+        "You are not a participant of this conversation",
+      );
+    }
+  }
+
   async readMessages(userId: string, conversationId: string): Promise<void> {
-    // 1. Bulk update unread messages to READ
+    // 1. Verify the caller actually belongs to the conversation
+    const existing = await this.conversationRepo.findOne({
+      where: { id: conversationId },
+      select: ["id", "user1Id", "user2Id"],
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    this.assertParticipant(existing, userId);
+
+    // 2. Bulk update unread messages to READ
     const updateResult = await this.messageRepo.update(
       {
         conversationId,

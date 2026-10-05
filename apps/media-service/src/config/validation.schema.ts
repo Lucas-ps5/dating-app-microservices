@@ -1,4 +1,5 @@
 import * as Joi from "joi";
+import { keycloakEnvSchema } from "@app/common";
 
 export const validationSchema = Joi.object({
   PORT: Joi.number().default(3003),
@@ -20,4 +21,5 @@ export const validationSchema = Joi.object({
   DB_USER: Joi.string().default("hmeet_media"),
   DB_PASSWORD: Joi.string().default("hmeet_media_password"),
   DB_NAME: Joi.string().default("hmeet_media"),
+  ...keycloakEnvSchema,
 });

@@ -6,6 +6,7 @@ import { KafkaModule } from "./kafka/kafka.module";
 import mediaConfiguration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { AuthModule } from "@app/common";
 import { Image } from "./images/image.entity";
 
 @Module({
@@ -33,6 +34,7 @@ import { Image } from "./images/image.entity";
     MinioModule,
     KafkaModule,
     ImagesModule,
+    AuthModule,
   ],
 })
 export class MediaAppModule {}

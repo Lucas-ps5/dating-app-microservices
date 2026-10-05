@@ -1,11 +1,13 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
 import { AppService } from "./app.service";
-import { Public } from "./auth/decorators/public.decorator";
-import { Roles } from "./auth/decorators/roles.decorator";
-import { CurrentUser } from "./auth/decorators/current-user.decorator";
-import { JwtAuthGuard } from "./auth/guards/jwt-auth.guard";
-import { RolesGuard } from "./auth/guards/roles.guard";
-import type { AuthenticatedUser } from "./auth/interfaces/user.interface";
+import {
+  AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+  Public,
+  Roles,
+  RolesGuard,
+} from "@app/common";
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)

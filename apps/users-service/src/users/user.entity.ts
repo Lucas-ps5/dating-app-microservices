@@ -24,15 +24,11 @@ export interface UserPreferences {
 }
 
 @Entity("users")
+// `discover` filters on these three columns on every request.
+@Index("IDX_users_discover", ["isActive", "gender", "birthdate"])
 export class User {
   @PrimaryColumn("uuid")
-  @Index()
   id!: string;
-
-  // // 3. KEYCLOAK ID: We keep this here to link the local profile to the Keycloak account.
-  // @Column({ unique: true, select: false })
-  // @Index()
-  // keycloakId: string;
 
   @Column({ unique: true, select: false })
   email!: string;

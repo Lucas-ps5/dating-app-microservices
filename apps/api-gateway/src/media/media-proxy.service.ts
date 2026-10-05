@@ -4,8 +4,9 @@ import { ConfigService } from "@nestjs/config";
 import { firstValueFrom } from "rxjs";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FormData = require("form-data") as typeof import("form-data");
-import type { AxiosResponse } from "axios";
-import type { AuthenticatedUser } from "../auth/interfaces/user.interface";
+import { type AxiosRequestConfig, type AxiosResponse } from "axios";
+import type { AuthenticatedUser } from "@app/common";
+import { rethrowUpstreamError } from "../common/http-error";
 
 export interface UploadImageResponse {
   url: string;
@@ -15,6 +16,10 @@ export interface UploadImageResponse {
 export interface PresignedUrlResponse {
   url: string;
 }
+
+const DEFAULT_TIMEOUT_MS = 10_000;
+/** Uploads carry a file in memory, so allow noticeably more headroom. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 @Injectable()
 export class MediaProxyService {
@@ -30,18 +35,39 @@ export class MediaProxyService {
       "http://localhost:3003/api";
   }
 
-  private userHeaders(user?: AuthenticatedUser): Record<string, string> {
-    if (!user) return {};
+  /**
+   * Downstream services now verify the access token themselves, so the
+   * original `Authorization` header is forwarded rather than the old
+   * forgeable `x-user-*` identity headers.
+   */
+  private passthroughHeaders(
+    user: AuthenticatedUser,
+    authorization?: string,
+  ): Record<string, string> {
     return {
+      ...(authorization ? { authorization } : {}),
       "x-user-id": user.id,
       "x-user-email": user.email ?? "",
       "x-user-roles": user.roles.join(","),
     };
   }
 
+  private async call<T>(
+    makeRequest: () => Promise<AxiosResponse<T>>,
+    url: string,
+  ): Promise<AxiosResponse<T>> {
+    try {
+      return await makeRequest();
+    } catch (error) {
+      this.logger.error(`Media proxy error for ${url}`);
+      rethrowUpstreamError(error);
+    }
+  }
+
   async uploadImage(
     file: Express.Multer.File,
     user: AuthenticatedUser,
+    authorization?: string,
     context = "general",
   ): Promise<AxiosResponse<UploadImageResponse>> {
     const form = new FormData();
@@ -53,38 +79,53 @@ export class MediaProxyService {
     const url = `${this.serviceUrl}/media/images?context=${encodeURIComponent(context)}`;
     this.logger.debug(`Streaming upload to media-service: ${url}`);
 
-    return firstValueFrom(
-      this.httpService.post(url, form, {
-        headers: {
-          ...form.getHeaders(),
-          ...this.userHeaders(user),
-        },
-      }),
+    const config: AxiosRequestConfig = {
+      timeout: UPLOAD_TIMEOUT_MS,
+      headers: {
+        ...form.getHeaders(),
+        ...this.passthroughHeaders(user, authorization),
+      },
+    };
+
+    return this.call(
+      () => firstValueFrom(this.httpService.post(url, form, config)),
+      url,
     );
   }
 
   async getPresignedUrl(
     objectName: string,
-    expires = 3600,
+    expires: number,
     user: AuthenticatedUser,
+    authorization?: string,
   ): Promise<AxiosResponse<PresignedUrlResponse>> {
-    return firstValueFrom(
-      this.httpService.get(`${this.serviceUrl}/media/images/presign`, {
-        params: { objectName, expires },
-        headers: this.userHeaders(user),
-      }),
+    const url = `${this.serviceUrl}/media/images/presign`;
+    const config: AxiosRequestConfig = {
+      timeout: DEFAULT_TIMEOUT_MS,
+      params: { objectName, expires },
+      headers: this.passthroughHeaders(user, authorization),
+    };
+
+    return this.call(
+      () => firstValueFrom(this.httpService.get(url, config)),
+      url,
     );
   }
 
   async deleteImage(
     objectName: string,
     user: AuthenticatedUser,
+    authorization?: string,
   ): Promise<AxiosResponse<void>> {
-    return firstValueFrom(
-      this.httpService.delete(
-        `${this.serviceUrl}/media/images/${encodeURIComponent(objectName)}`,
-        { headers: this.userHeaders(user) },
-      ),
+    const url = `${this.serviceUrl}/media/images/${encodeURIComponent(objectName)}`;
+    const config: AxiosRequestConfig = {
+      timeout: DEFAULT_TIMEOUT_MS,
+      headers: this.passthroughHeaders(user, authorization),
+    };
+
+    return this.call(
+      () => firstValueFrom(this.httpService.delete(url, config)),
+      url,
     );
   }
 }

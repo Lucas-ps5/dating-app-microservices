@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Kafka, Producer } from "kafkajs";
+import { errorMessage } from "@app/common";
 
 @Injectable()
 export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
@@ -28,7 +29,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
       this.logger.log("Kafka producer connected");
     } catch (err) {
       this.logger.warn(
-        `Kafka unavailable: ${err.message} – events will be skipped`,
+        `Kafka unavailable: ${errorMessage(err)} â€“ events will be skipped`,
       );
     }
   }
@@ -45,7 +46,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
         messages: [{ value: JSON.stringify(payload) }],
       });
     } catch (err) {
-      this.logger.error(`Failed to emit "${topic}": ${err.message}`);
+      this.logger.error(`Failed to emit "${topic}": ${errorMessage(err)}`);
     }
   }
 }
