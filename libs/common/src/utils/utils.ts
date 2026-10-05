@@ -34,6 +34,18 @@ export function toRad(degrees: number): number {
 }
 
 /**
+ * Normalises a wildcard route parameter back into an object key.
+ *
+ * MinIO stores objects as `folder/name.ext`, so the delete routes use a named
+ * wildcard (`images/*objectName`). Under path-to-regexp v8 / Express 5 a
+ * wildcard that spans several segments arrives as an array, and interpolating
+ * that array directly yields `folder,name.ext` instead of `folder/name.ext`.
+ */
+export function objectNameToPath(objectName: string | string[]): string {
+  return Array.isArray(objectName) ? objectName.join("/") : objectName;
+}
+
+/**
  * Normalises a caught value into a loggable string. `catch` bindings are
  * `unknown` in strict TypeScript, so reading `.message` directly is unsafe and
  * would throw again inside the logger.

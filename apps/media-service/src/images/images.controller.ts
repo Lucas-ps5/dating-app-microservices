@@ -8,10 +8,13 @@ import {
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import {
@@ -19,11 +22,13 @@ import {
   ApiBody,
   ApiConsumes,
   ApiOperation,
+  ApiProduces,
   ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import { ImagesService } from "./images.service";
 import { AuthenticatedUser, CurrentUser, JwtAuthGuard } from "@app/common";
+import { objectNameToPath } from "@app/common/utils/utils";
 
 const ALLOWED_MIMETYPES = [
   "image/jpeg",
@@ -121,13 +126,47 @@ export class ImagesController {
     return { url };
   }
 
-  @Delete(":objectName(*)")
+  // Declared after `presign` so the literal path wins over the wildcard.
+  @Get("*objectName")
+  @ApiOperation({ summary: "Stream an image file" })
+  @ApiProduces("image/png", "image/jpeg", "image/webp", "image/gif")
+  async getImage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("objectName") objectName: string | string[],
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const { stream, contentType, size, fileName } =
+      await this.imagesService.getImageStream(
+        objectNameToPath(objectName),
+        user.id,
+        user.roles,
+      );
+
+    response.set({
+      "Content-Type": contentType,
+      "Content-Length": String(size),
+      // objectName is server-generated (uuid) but originalName is user
+      // supplied, so encode rather than interpolating it raw.
+      "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
+      "Cache-Control": "private, max-age=3600",
+    });
+
+    return new StreamableFile(stream);
+  }
+
+  // path-to-regexp v8 (Nest 11) rejects the Express 4 `:param(*)` syntax.
+  // A named wildcard still matches the `folder/name.ext` shape MinIO stores.
+  @Delete("*objectName")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete an image from MinIO" })
   async deleteImage(
     @CurrentUser() user: AuthenticatedUser,
-    @Param("objectName") objectName: string,
+    @Param("objectName") objectName: string | string[],
   ) {
-    await this.imagesService.deleteImage(objectName, user.id, user.roles);
+    await this.imagesService.deleteImage(
+      objectNameToPath(objectName),
+      user.id,
+      user.roles,
+    );
   }
 }

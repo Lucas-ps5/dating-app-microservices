@@ -1,12 +1,9 @@
 import {
   All,
-  Body,
   Controller,
-  Headers,
   HttpStatus,
   MethodNotAllowedException,
   NotFoundException,
-  Query,
   Req,
   Res,
   UseGuards,
@@ -14,7 +11,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { ApiBearerAuth, ApiExcludeController, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
-import { AuthenticatedUser, CurrentUser } from "@app/common";
+import { AuthenticatedUser } from "@app/common";
 import {
   HttpProxyService,
   type ProxyHttpMethod,
@@ -73,24 +70,63 @@ export class GenericProxyController {
     };
   }
 
+  // Nest only honours the LAST route decorator on a method, so each proxied
+  // prefix needs its own method. They all delegate to `forward`.
   @All("user")
+  forwardUserRoot(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("user/*path")
+  forwardUser(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("users")
+  forwardUsersRoot(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("users/*path")
+  forwardUsers(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("chat")
+  forwardChatRoot(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("chat/*path")
+  forwardChat(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("matches")
+  forwardMatchesRoot(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("matches/*path")
+  forwardMatches(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("likes")
+  forwardLikesRoot(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
   @All("likes/*path")
-  async forward(
-    @Body() body: unknown,
-    @Query() query: Record<string, unknown>,
-    @CurrentUser() user: AuthenticatedUser | undefined,
-    @Headers("authorization") authorization: string | undefined,
-    @Req() request: Request,
-    @Res() response: Response,
-  ) {
+  forwardLikes(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
+  private async forward(request: Request, response: Response) {
+    const body = request.body as unknown;
+    const query = request.query as Record<string, unknown>;
+    const user = (request as Request & { user?: AuthenticatedUser }).user;
+    const authorization = request.headers.authorization;
     const { serviceName, path } = this.parseServicePath(request.path);
     const service = serviceName ? this.services[serviceName] : undefined;
     if (!service) {

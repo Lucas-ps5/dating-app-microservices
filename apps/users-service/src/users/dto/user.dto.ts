@@ -72,6 +72,20 @@ export class CreateUserDto {
   @IsEnum(Gender)
   @ApiProperty({ enum: Gender })
   gender!: Gender;
+
+  // Keycloak 26 requires a name on the account, otherwise it flags
+  // UPDATE_PROFILE and the user's first login fails with invalid_grant.
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  @ApiPropertyOptional()
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  @ApiPropertyOptional()
+  lastName?: string;
 }
 
 export class UpdateUserDto {

@@ -130,6 +130,16 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  /**
+   * Realm the admin API operates on. Passed per call rather than pushed into
+   * the shared client config, because `auth()` must keep targeting `master`:
+   * repointing the client at `hmeet` makes every later re-auth fail with
+   * invalid_grant, as there is no admin user in the application realm.
+   */
+  private get appRealm(): string {
+    return this.configService.get<string>("KEYCLOAK_REALM") ?? "hmeet";
+  }
+
   /** Authenticate (or re-authenticate) the admin client against Keycloak. */
   private async authenticate(): Promise<void> {
     await this.kcAdminClient.auth({
@@ -141,10 +151,6 @@ export class UsersService implements OnModuleInit {
       clientId:
         this.configService.get<string>("KEYCLOAK_ADMIN_CLIENT_ID") ??
         "admin-cli",
-    });
-
-    this.kcAdminClient.setConfig({
-      realmName: this.configService.get<string>("KEYCLOAK_REALM") ?? "hmeet",
     });
   }
 
@@ -169,9 +175,14 @@ export class UsersService implements OnModuleInit {
     try {
       await this.authenticate();
       const response = await this.kcAdminClient.users.create({
+        realm: this.appRealm,
         username: dto.username,
         email: dto.email,
         enabled: true,
+        // Keycloak 26 attaches UPDATE_PROFILE to accounts with no name, which
+        // makes their first password grant fail with invalid_grant.
+        firstName: dto.firstName ?? dto.username,
+        lastName: dto.lastName ?? "User",
         credentials: [
           {
             type: "password",
@@ -211,7 +222,10 @@ export class UsersService implements OnModuleInit {
       // Rollback: If DB save fails, delete from Keycloak to stay consistent
       try {
         await this.authenticate();
-        await this.kcAdminClient.users.del({ id: keycloakId });
+        await this.kcAdminClient.users.del({
+          realm: this.appRealm,
+          id: keycloakId,
+        });
       } catch (rollbackError) {
         this.logger.error(
           "Rollback failed. Keycloak user is orphaned.",

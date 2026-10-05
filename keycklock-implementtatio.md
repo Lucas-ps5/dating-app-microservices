@@ -47,7 +47,7 @@ KEYCLOAK_REALM=hmeet
 KEYCLOAK_CLIENT_ID=hmeet-backend
 KEYCLOAK_CLIENT_SECRET=your-client-secret-here
 JWT_ISSUER=http://localhost:8080/realms/hmeet
-JWT_AUDIENCE=account
+JWT_AUDIENCE=hmeet-backend
 CORS_ORIGIN=http://localhost:3001,http://localhost:4200
 # Keycloak Authentication Integration - Walkthrough
 
@@ -98,7 +98,7 @@ KEYCLOAK_REALM=hmeet
 KEYCLOAK_CLIENT_ID=hmeet-backend
 KEYCLOAK_CLIENT_SECRET=your-client-secret-here
 JWT_ISSUER=http://localhost:8080/realms/hmeet
-JWT_AUDIENCE=account
+JWT_AUDIENCE=hmeet-backend
 CORS_ORIGIN=http://localhost:3001,http://localhost:4200
 
 [.env.production](file:///home/logabo/Desktop/school-work/HMeet/hmeet-backend/.env.production) - Production template with placeholder values

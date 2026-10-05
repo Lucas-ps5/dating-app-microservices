@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
@@ -52,6 +52,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: KeycloakTokenPayload): AuthenticatedUser {
+    // A token with no `sub` would resolve to `undefined`, which most
+    // repository lookups silently treat as "no filter" and return the first
+    // row. Reject it outright rather than serve another user's record.
+    if (!payload.sub) {
+      throw new UnauthorizedException(
+        "Token is missing the sub claim. Check that the client's default scopes include 'basic'.",
+      );
+    }
+
     const realmRoles: string[] = payload.realm_access?.roles ?? [];
     const clientRoles: string[] =
       payload.resource_access?.[this.clientId]?.roles ?? [];

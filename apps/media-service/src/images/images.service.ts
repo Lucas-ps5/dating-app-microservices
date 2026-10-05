@@ -11,6 +11,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Image } from "./image.entity";
 import { v4 as uuidv4 } from "uuid";
+import type { Readable } from "stream";
 
 export interface UploadResult {
   objectName: string;
@@ -109,6 +110,35 @@ export class ImagesService {
   ): Promise<string> {
     await this.findOwned(objectName, requesterId, requesterRoles);
     return this.minio.presignedUrl(objectName, expiresSeconds);
+  }
+
+  /**
+   * Resolves an object to a readable stream plus the metadata needed for HTTP
+   * response headers. Ownership is checked first, so this cannot be used to
+   * read another user's image. The stream is lazy: the MinIO request only
+   * starts once the caller consumes it.
+   */
+  async getImageStream(
+    objectName: string,
+    requesterId: string,
+    requesterRoles: string[] = [],
+  ): Promise<{
+    stream: Readable;
+    contentType: string;
+    size: number;
+    fileName: string;
+  }> {
+    const image = await this.findOwned(objectName, requesterId, requesterRoles);
+    const size = await this.minio.objectSize(objectName);
+    const stream = await this.minio.getObjectStream(objectName);
+
+    return {
+      stream,
+      // Fall back to the stored type; never sniff from the body.
+      contentType: image.imageType || "application/octet-stream",
+      size,
+      fileName: image.originalName,
+    };
   }
 
   async deleteImage(

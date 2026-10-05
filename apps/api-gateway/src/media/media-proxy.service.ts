@@ -112,6 +112,31 @@ export class MediaProxyService {
     );
   }
 
+  /**
+   * Fetches image bytes from media-service. `responseType: "stream"` keeps the
+   * gateway from buffering the whole file, and `validateStatus` lets error
+   * bodies (404/403 JSON) come back as a normal response for `call` to
+   * translate rather than an axios throw.
+   */
+  async getImage(
+    objectName: string,
+    user: AuthenticatedUser,
+    authorization?: string,
+  ): Promise<AxiosResponse<NodeJS.ReadableStream>> {
+    const url = `${this.serviceUrl}/media/images/${encodeURIComponent(objectName)}`;
+    const config: AxiosRequestConfig = {
+      timeout: DEFAULT_TIMEOUT_MS,
+      responseType: "stream",
+      validateStatus: () => true,
+      headers: this.passthroughHeaders(user, authorization),
+    };
+
+    return this.call(
+      () => firstValueFrom(this.httpService.get(url, config)),
+      url,
+    );
+  }
+
   async deleteImage(
     objectName: string,
     user: AuthenticatedUser,

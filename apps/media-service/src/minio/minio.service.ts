@@ -3,10 +3,12 @@ import {
   OnModuleInit,
   Logger,
   InternalServerErrorException,
+  NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as Minio from "minio";
 import { extname } from "path";
+import type { Readable } from "stream";
 import { errorMessage } from "@app/common";
 
 @Injectable()
@@ -106,6 +108,34 @@ export class MinioService implements OnModuleInit {
       throw new InternalServerErrorException(
         "Failed to generate presigned URL",
       );
+    }
+  }
+
+  /**
+   * Open a readable stream for an object. The caller is responsible for
+   * consuming or destroying the stream; it is returned raw rather than
+   * buffered so a large image is never held in memory.
+   */
+  async getObjectStream(objectName: string): Promise<Readable> {
+    try {
+      return await this.client.getObject(this.bucket, objectName);
+    } catch (err) {
+      this.logger.error(`getObject failed: ${errorMessage(err)}`);
+      throw new NotFoundException(`Image ${objectName} not found`);
+    }
+  }
+
+  /**
+   * Size in bytes of a stored object, used to set Content-Length up front so
+   * clients can render progress. Throws if the object is missing.
+   */
+  async objectSize(objectName: string): Promise<number> {
+    try {
+      const stat = await this.client.statObject(this.bucket, objectName);
+      return stat.size;
+    } catch (err) {
+      this.logger.error(`statObject failed: ${errorMessage(err)}`);
+      throw new NotFoundException(`Image ${objectName} not found`);
     }
   }
 

@@ -52,4 +52,38 @@ describe("AppController (e2e)", () => {
   it("/unknown-service (GET) is not found", () => {
     return request(httpServer()).get("/unknown-service/thing").expect(404);
   });
+
+  // Every prefix the gateway claims to proxy must actually have a route
+  // registered. Nest silently ignores stacked route decorators, so these
+  // guards the paths that used to 404 for every proxied call.
+  it.each([
+    "user",
+    "user/me",
+    "users",
+    "users/register",
+    "chat",
+    "chat/rooms",
+    "matches",
+    "matches/likes",
+    "likes",
+    "likes/abc",
+  ])("proxied prefix /%s is routed, not 404", (path) => {
+    return request(httpServer())
+      .get(`/${path}`)
+      .expect((res) => {
+        // A real proxied route answers 401 without a token. Only an
+        // unregistered path falls through to Nest's 404 handler.
+        expect(res.status).not.toBe(404);
+      });
+  });
+
+  it("POST /user/register is reachable without a token", () => {
+    return request(httpServer())
+      .post("/user/register")
+      .send({})
+      .expect((res) => {
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(404);
+      });
+  });
 });

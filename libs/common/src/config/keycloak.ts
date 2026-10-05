@@ -14,7 +14,7 @@ export const keycloakEnvSchema = {
   KEYCLOAK_REALM: Joi.string().default("hmeet"),
   KEYCLOAK_CLIENT_ID: Joi.string().default("hmeet-backend"),
   JWT_ISSUER: Joi.string().uri().default("http://localhost:8080/realms/hmeet"),
-  JWT_AUDIENCE: Joi.string().default("account"),
+  JWT_AUDIENCE: Joi.string().default("hmeet-backend"),
 };
 
 /**
