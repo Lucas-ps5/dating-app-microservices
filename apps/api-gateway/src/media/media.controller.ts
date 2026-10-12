@@ -64,7 +64,7 @@ export class MediaController {
       },
     },
   })
-  @ApiOperation({ summary: "Upload an image â€” stored in MinIO" })
+  @ApiOperation({ summary: "Upload an image — stored in object storage" })
   async uploadImage(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: AuthenticatedUser,
@@ -185,7 +185,7 @@ export class MediaController {
 
   @Delete("images/*objectName")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Delete an image from MinIO" })
+  @ApiOperation({ summary: "Delete an image from object storage" })
   async deleteImage(
     @Param("objectName") objectName: string | string[],
     @CurrentUser() user: AuthenticatedUser,

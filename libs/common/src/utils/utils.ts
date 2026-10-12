@@ -36,7 +36,7 @@ export function toRad(degrees: number): number {
 /**
  * Normalises a wildcard route parameter back into an object key.
  *
- * MinIO stores objects as `folder/name.ext`, so the delete routes use a named
+   * Object storage keys use `folder/name.ext`, so the delete routes use a named
  * wildcard (`images/*objectName`). Under path-to-regexp v8 / Express 5 a
  * wildcard that spans several segments arrives as an array, and interpolating
  * that array directly yields `folder,name.ext` instead of `folder/name.ext`.

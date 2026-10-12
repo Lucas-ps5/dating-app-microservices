@@ -13,11 +13,11 @@ API Gateway (port 3000) ── Swagger at /api/docs
   ├──HTTP──► Users Service   (port 3001)  ──► Postgres users-db (5433)
   ├──HTTP──► Chat Service    (port 3002)  ──► Postgres chat-db  (5434)
   │              └── Socket.IO /chat (WebSocket)
-  └──HTTP──► Media Service   (port 3003)  ──► MinIO (port 9000)
+  └──HTTP──► Media Service   (port 3003)  ──► RustFS (port 9000)
 
 Kafka (port 29092) ── Kafka UI (port 8090)
 Keycloak (port 8080)
-MinIO Console (port 9001)
+RustFS Console (port 9001)
 ```
 
 ---

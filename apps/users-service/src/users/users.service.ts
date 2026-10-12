@@ -370,6 +370,9 @@ export class UsersService implements OnModuleInit {
         "user.photos",
         "user.title",
         "user.birthdate",
+        "user.gender",
+        "user.city",
+        "user.country",
         "user.latitude",
         "user.longitude",
       ])

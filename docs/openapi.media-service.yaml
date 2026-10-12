@@ -3,15 +3,15 @@
 info:
   title: HMeet – Media Service
   description: |
-    Internal HTTP API for image storage and retrieval via **MinIO** (S3-compatible).
+    Internal HTTP API for image storage and retrieval via S3-compatible object storage.
     **Not exposed publicly** — called only by the api-gateway over the internal Docker network.
 
     **Authentication**: Caller identity is forwarded via the `x-user-id` header
     (extracted from the Keycloak JWT by the api-gateway).
 
-    **Storage backend**: MinIO bucket `hmeet-media`
+    **Storage backend**: RustFS bucket `hmeet-media`
     - S3 API:     http://localhost:9000
-    - Web console: http://localhost:9001  (user: minioadmin / minioadmin)
+    - Web console: http://localhost:9001  (access key: minioadmin / secret key: minioadmin)
 
     **Allowed MIME types**: image/jpeg, image/png, image/webp, image/gif
 
@@ -20,8 +20,8 @@ info:
     **Async events (Kafka)**:
     | Event | Topic | Produced when |
     |---|---|---|
-    | `image.uploaded` | `media-events` | Image successfully stored in MinIO |
-    | `image.deleted`  | `media-events` | Image removed from MinIO |
+    | `image.uploaded` | `media-events` | Image successfully stored in object storage |
+    | `image.deleted`  | `media-events` | Image removed from object storage |
 
     **Database**: PostgreSQL (`hmeet_media` — port 5435 in development)
     Stores image metadata (imageName, originalName, imageType, imageSize, imageUrl).
@@ -50,7 +50,7 @@ components:
         imageName:
           type: string
           format: uuid
-          description: UUID generated as the MinIO object key prefix
+          description: UUID generated as the S3 object key prefix
           example: "7c9a2b3d-1234-5678-abcd-ef0123456789"
         originalName:
           type: string
@@ -76,11 +76,11 @@ components:
         imageUrl:
           type: string
           format: uri
-          description: URL of the uploaded image in MinIO
+          description: URL of the uploaded image in object storage
           example: "http://localhost:9000/hmeet-media/users/abc123/7c9a2b3d.jpg"
         objectName:
           type: string
-          description: MinIO object key — use this for presign and delete operations
+          description: S3 object key — use this for presign and delete operations
           example: "users/abc123/7c9a2b3d.jpg"
 
     PresignedUrlResponse:
@@ -131,7 +131,7 @@ components:
                 message: "File type not allowed. Accepted: image/jpeg, image/png, image/webp, image/gif"
                 error: "Bad Request"
     NotFound:
-      description: Object not found in MinIO or metadata not found
+      description: Object not found in object storage or metadata not found
       content:
         application/json:
           schema:
@@ -142,9 +142,9 @@ paths:
   /media/images:
     post:
       tags: [images]
-      summary: Upload an image to MinIO
+      summary: Upload an image to object storage
       description: |
-        Stores the image in the `hmeet-media` MinIO bucket under a path derived from the
+        Stores the image in the `hmeet-media` bucket under a path derived from the
         caller's `x-user-id` header and a generated UUID object name.
 
         After a successful upload, the service:
@@ -216,7 +216,7 @@ paths:
         - name: objectName
           in: query
           required: true
-          description: MinIO object key as returned by the upload endpoint
+          description: S3 object key as returned by the upload endpoint
           schema:
             type: string
           example: "users/abc123/7c9a2b3d.jpg"
@@ -245,16 +245,16 @@ paths:
   /media/images/{objectName}:
     delete:
       tags: [images]
-      summary: Delete an image from MinIO
+      summary: Delete an image from object storage
       description: |
-        Removes the object from the MinIO bucket and publishes an `image.deleted` Kafka event.
+        Removes the object from the storage bucket and publishes an `image.deleted` Kafka event.
         Nested paths are supported (e.g. `users/abc123/7c9a2b3d.jpg`).
       operationId: deleteImage
       parameters:
         - name: objectName
           in: path
           required: true
-          description: MinIO object key (wildcard path segment)
+          description: S3 object key (wildcard path segment)
           schema:
             type: string
           example: "users/abc123/7c9a2b3d.jpg"
@@ -267,6 +267,6 @@ paths:
             format: uuid
       responses:
         "204":
-          description: Image deleted from MinIO
+          description: Image deleted from object storage
         "404":
           $ref: "#/components/responses/NotFound"

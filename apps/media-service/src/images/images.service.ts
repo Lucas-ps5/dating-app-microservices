@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { MinioService } from "../minio/minio.service";
+import { ObjectStorageService } from "../object-storage/object-storage.service";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import { KAFKA_TOPICS, ImageDeletedEvent } from "@app/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -30,7 +30,7 @@ export class ImagesService {
     @InjectRepository(Image)
     private readonly imagesRepo: Repository<Image>,
 
-    private readonly minio: MinioService,
+    private readonly objectStorage: ObjectStorageService,
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
@@ -42,7 +42,7 @@ export class ImagesService {
     context = "general",
   ): Promise<UploadResult> {
     const id = uuidv4();
-    const { objectName, url } = await this.minio.upload(
+    const { objectName, url } = await this.objectStorage.upload(
       buffer,
       originalName,
       id,
@@ -64,11 +64,11 @@ export class ImagesService {
     try {
       await this.imagesRepo.save(image);
     } catch (error) {
-      // If DB save fails, delete the file from MinIO so we don't have orphaned files
+      // If DB save fails, delete the file so we don't leave an orphaned object.
       this.logger.error(
-        `DB save failed for ${objectName}, cleaning up MinIO...`,
+        `DB save failed for ${objectName}, cleaning up object storage...`,
       );
-      await this.minio.delete(objectName);
+      await this.objectStorage.delete(objectName);
       throw error; // Re-throw the error so the controller knows the upload failed
     }
 
@@ -109,13 +109,13 @@ export class ImagesService {
     expiresSeconds = 3600,
   ): Promise<string> {
     await this.findOwned(objectName, requesterId, requesterRoles);
-    return this.minio.presignedUrl(objectName, expiresSeconds);
+    return this.objectStorage.presignedUrl(objectName, expiresSeconds);
   }
 
   /**
    * Resolves an object to a readable stream plus the metadata needed for HTTP
    * response headers. Ownership is checked first, so this cannot be used to
-   * read another user's image. The stream is lazy: the MinIO request only
+   * read another user's image. The stream is lazy: the object request only
    * starts once the caller consumes it.
    */
   async getImageStream(
@@ -129,8 +129,8 @@ export class ImagesService {
     fileName: string;
   }> {
     const image = await this.findOwned(objectName, requesterId, requesterRoles);
-    const size = await this.minio.objectSize(objectName);
-    const stream = await this.minio.getObjectStream(objectName);
+    const size = await this.objectStorage.objectSize(objectName);
+    const stream = await this.objectStorage.getObjectStream(objectName);
 
     return {
       stream,
@@ -148,7 +148,7 @@ export class ImagesService {
   ): Promise<void> {
     await this.findOwned(objectName, ownerId, requesterRoles);
 
-    await this.minio.delete(objectName);
+    await this.objectStorage.delete(objectName);
 
     await this.imagesRepo.delete({ imageName: objectName });
 

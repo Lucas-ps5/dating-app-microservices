@@ -15,7 +15,7 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle("HMeet Media Service")
-    .setDescription("Image upload, retrieval & deletion via MinIO")
+    .setDescription("Image upload, retrieval & deletion via S3-compatible object storage")
     .setVersion("1.0")
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);

@@ -420,7 +420,7 @@ paths:
     post:
       tags: [users]
       summary: Upload a profile photo
-      description: Uploads photo to media-service (MinIO) then links URL to the user profile in users-service.
+      description: Uploads photo to media-service object storage then links URL to the user profile in users-service.
       operationId: uploadProfilePhoto
       requestBody:
         required: true
@@ -683,13 +683,13 @@ paths:
   /media/images/{objectName}:
     delete:
       tags: [media]
-      summary: Delete an image from MinIO
+      summary: Delete an image from object storage
       operationId: deleteImage
       parameters:
         - name: objectName
           in: path
           required: true
-          description: MinIO object key (nested paths supported)
+          description: S3 object key (nested paths supported)
           schema:
             type: string
           example: "users/abc123/avatar.jpg"

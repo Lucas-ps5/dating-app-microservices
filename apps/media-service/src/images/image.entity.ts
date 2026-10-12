@@ -13,7 +13,7 @@ export class Image {
   id: string;
 
   /**
-   * The MinIO object key, e.g. "profile-photo/<uuid>.jpg". This is a path,
+   * The S3 object key, e.g. "profile-photo/<uuid>.jpg". This is a path,
    * not a uuid, so it must not be typed as one — Postgres rejects the insert
    * otherwise.
    */

@@ -49,7 +49,7 @@ export class ImagesController {
   @Post()
   @UseInterceptors(
     FileInterceptor("photo", {
-      storage: memoryStorage(), // File lives in memory — MinIO handles persistence
+      storage: memoryStorage(), // File lives in memory; object storage persists it.
       limits: { fileSize: MAX_SIZE_BYTES },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
@@ -80,7 +80,7 @@ export class ImagesController {
       },
     },
   })
-  @ApiOperation({ summary: "Upload an image to MinIO" })
+  @ApiOperation({ summary: "Upload an image to object storage" })
   async uploadImage(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser("id") ownerId: string,
@@ -155,10 +155,10 @@ export class ImagesController {
   }
 
   // path-to-regexp v8 (Nest 11) rejects the Express 4 `:param(*)` syntax.
-  // A named wildcard still matches the `folder/name.ext` shape MinIO stores.
+  // A named wildcard still matches the `folder/name.ext` object key shape.
   @Delete("*objectName")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Delete an image from MinIO" })
+  @ApiOperation({ summary: "Delete an image from object storage" })
   async deleteImage(
     @CurrentUser() user: AuthenticatedUser,
     @Param("objectName") objectName: string | string[],

@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ImagesModule } from "./images/images.module";
-import { MinioModule } from "./minio/minio.module";
+import { ObjectStorageModule } from "./object-storage/object-storage.module";
 import { KafkaModule } from "./kafka/kafka.module";
 import mediaConfiguration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
@@ -31,7 +31,7 @@ import { Image } from "./images/image.entity";
         logging: config.get<string>("nodeEnv") === "development",
       }),
     }),
-    MinioModule,
+    ObjectStorageModule,
     KafkaModule,
     ImagesModule,
     AuthModule,

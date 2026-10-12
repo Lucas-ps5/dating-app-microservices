@@ -3,14 +3,19 @@ import { keycloakConfiguration } from "@app/common";
 export default () => ({
   port: parseInt(process.env.PORT || "3003", 10),
   nodeEnv: process.env.NODE_ENV || "development",
-  minio: {
-    endpoint: process.env.MINIO_ENDPOINT || "localhost",
-    port: parseInt(process.env.MINIO_PORT || "9000", 10),
-    accessKey: process.env.MINIO_ACCESS_KEY || "minioadmin",
-    secretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
-    bucket: process.env.MINIO_BUCKET || "hmeet-media",
-    useSSL: process.env.MINIO_USE_SSL === "true",
-    publicUrl: process.env.MINIO_PUBLIC_URL || "http://localhost:9000",
+  objectStorage: {
+    endpoint: process.env.OBJECT_STORAGE_ENDPOINT || "localhost",
+    port: parseInt(process.env.OBJECT_STORAGE_PORT || "9000", 10),
+    accessKey: process.env.OBJECT_STORAGE_ACCESS_KEY || "minioadmin",
+    secretKey: process.env.OBJECT_STORAGE_SECRET_KEY || "minioadmin",
+    bucket: process.env.OBJECT_STORAGE_BUCKET || "hmeet-media",
+    useSSL: process.env.OBJECT_STORAGE_USE_SSL === "true",
+    publicUrl:
+      process.env.OBJECT_STORAGE_PUBLIC_URL || "http://localhost:9000",
+    publicRead:
+      process.env.OBJECT_STORAGE_PUBLIC_READ === "true" ||
+      (process.env.OBJECT_STORAGE_PUBLIC_READ !== "false" &&
+        process.env.NODE_ENV !== "production"),
   },
   kafka: {
     brokers: (process.env.KAFKA_BROKERS || "localhost:29092").split(","),
