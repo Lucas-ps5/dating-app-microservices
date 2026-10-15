@@ -8,9 +8,16 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, QueryFailedError } from "typeorm";
+import { plainToInstance } from "class-transformer";
 import { ConfigService } from "@nestjs/config";
 import { User } from "./user.entity";
-import { CreateUserDto, UpdateUserDto, DiscoverQueryDto } from "./dto/user.dto";
+import { UserSensitiveProfile } from "./user-sensitive-profile.entity";
+import {
+  CreateUserDto,
+  DiscoverQueryDto,
+  PublicUserResponseDto,
+  UpdateProfileDto,
+} from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
 import {
   CreationResponse,
@@ -23,7 +30,7 @@ import KcAdminClient from "@keycloak/keycloak-admin-client";
 import { UserWithDistance } from "./interfaces/user-with-distance.interface";
 
 export interface PaginatedUsers {
-  data: Partial<UserWithDistance>[];
+  data: PublicUserResponseDto[];
   total: number;
   page?: number;
   limit?: number;
@@ -39,10 +46,14 @@ const FIELD_MAP: Record<FieldToExtractCodes, readonly (keyof User)[]> = {
     "bio",
     "gender",
     "birthdate",
-    "isActive",
+    "heightCm",
+    "languagesSpoken",
     "preferences",
+    "isActive",
     "latitude",
     "longitude",
+    "city",
+    "country",
   ],
   "Code-2": [
     "id",
@@ -83,21 +94,28 @@ function toCoordinate(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+type PublicProfileData = Partial<User> & {
+  relationshipTypesSought?: string[];
+  sexualInterests?: string[];
+  hasChildren?: string;
+  wantsChildren?: string;
+};
+
 function withDistance(
-  user: User,
+  user: PublicProfileData,
   currentUserLat?: number,
   currentUserLon?: number,
-): UserWithDistance {
+): UserWithDistance & PublicProfileData {
   const userLat = toCoordinate(user.latitude);
   const userLon = toCoordinate(user.longitude);
   const viewerLat = toCoordinate(currentUserLat);
   const viewerLon = toCoordinate(currentUserLon);
 
   if (userLat === undefined || userLon === undefined) {
-    return { ...user };
+    return { ...user, latitude: undefined };
   }
   if (viewerLat === undefined || viewerLon === undefined) {
-    return { ...user };
+    return { ...user, longitude: undefined };
   }
 
   const distanceKm = calculateDistance(viewerLat, viewerLon, userLat, userLon);
@@ -110,14 +128,42 @@ function withDistance(
   };
 }
 
+function calculateAge(birthdate: string): number {
+  const date = new Date(`${birthdate}T00:00:00Z`);
+  const now = new Date();
+  let age = now.getUTCFullYear() - date.getUTCFullYear();
+  if (
+    now.getUTCMonth() < date.getUTCMonth() ||
+    (now.getUTCMonth() === date.getUTCMonth() &&
+      now.getUTCDate() < date.getUTCDate())
+  ) {
+    age -= 1;
+  }
+  return age;
+}
+
+function toPublicUserResponse(
+  user: Partial<UserWithDistance & PublicProfileData>,
+): PublicUserResponseDto {
+  const response = plainToInstance(PublicUserResponseDto, user, {
+    excludeExtraneousValues: true,
+  });
+  if (user.birthdate) response.age = calculateAge(user.birthdate);
+  return response;
+}
+
 @Injectable()
 export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
   private readonly kcAdminClient: KcAdminClient;
+  private geocodingQueue: Promise<void> = Promise.resolve();
+  private lastGeocodingRequestAt = 0;
 
   constructor(
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
+    @InjectRepository(UserSensitiveProfile)
+    private readonly sensitiveProfilesRepo: Repository<UserSensitiveProfile>,
     private readonly kafkaProducer: KafkaProducerService,
     private readonly configService: ConfigService,
   ) {
@@ -170,6 +216,8 @@ export class UsersService implements OnModuleInit {
    * 3. Save user locally with that ID
    */
   async register(dto: CreateUserDto): Promise<CreationResponse> {
+    const location = await this.reverseGeocode(dto.latitude, dto.longitude);
+
     // 1. Create User in Keycloak
     let keycloakId: string;
     try {
@@ -181,8 +229,8 @@ export class UsersService implements OnModuleInit {
         enabled: true,
         // Keycloak 26 attaches UPDATE_PROFILE to accounts with no name, which
         // makes their first password grant fail with invalid_grant.
-        firstName: dto.firstName ?? dto.username,
-        lastName: dto.lastName ?? "User",
+        firstName: dto.firstName ?? "empty",
+        lastName: dto.lastName ?? "empty",
         credentials: [
           {
             type: "password",
@@ -210,6 +258,11 @@ export class UsersService implements OnModuleInit {
       email: dto.email,
       username: dto.username,
       gender: dto.gender,
+      birthdate: dto.birthdate,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      city: location?.city,
+      country: location?.country,
     });
 
     try {
@@ -246,31 +299,189 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  async updateProfile(dto: UpdateUserDto, id: string): Promise<User> {
-    const user = await this.usersRepo.findOne({
-      where: { id },
+  /**
+   * Resolve a coordinate to a city/country with the free OpenStreetMap
+   * Nominatim service. Its public endpoint allows at most one request per
+   * second, so serialize and pace requests made by this service instance.
+   * Geocoding is best-effort: the submitted coordinates are always saved.
+   */
+  private async reverseGeocode(
+    latitude: number,
+    longitude: number,
+  ): Promise<{ city?: string; country?: string } | undefined> {
+    let release!: () => void;
+    const previousRequest = this.geocodingQueue;
+    this.geocodingQueue = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    if (!user) {
-      throw new NotFoundException(`No profile found for keycloakId=${id}`);
+
+    await previousRequest;
+    try {
+      const waitMs = Math.max(
+        0,
+        1000 - (Date.now() - this.lastGeocodingRequestAt),
+      );
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      this.lastGeocodingRequestAt = Date.now();
+
+      const url = new URL("https://nominatim.openstreetmap.org/reverse");
+      url.search = new URLSearchParams({
+        format: "jsonv2",
+        addressdetails: "1",
+        lat: String(latitude),
+        lon: String(longitude),
+      }).toString();
+
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent":
+            this.configService.get<string>("GEOCODING_USER_AGENT") ??
+            "HMeet Dating App/1.0",
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        throw new Error(`Nominatim returned HTTP ${response.status}`);
+      }
+
+      const result = (await response.json()) as {
+        address?: {
+          city?: string;
+          town?: string;
+          village?: string;
+          municipality?: string;
+          city_district?: string;
+          country?: string;
+        };
+      };
+      const address = result.address;
+      const city =
+        address?.city ??
+        address?.town ??
+        address?.village ??
+        address?.municipality ??
+        address?.city_district;
+      return city || address?.country
+        ? { city, country: address?.country }
+        : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Reverse geocoding failed; saving coordinates without city/country: ${String(error)}`,
+      );
+      return undefined;
+    } finally {
+      release();
     }
+  }
 
-    // Only update fields if they are provided in the DTO
-    if (dto.username !== undefined) user.username = dto.username;
-    if (dto.title !== undefined) user.title = dto.title;
-    if (dto.bio !== undefined) user.bio = dto.bio;
-    if (dto.gender !== undefined) user.gender = dto.gender;
-    if (dto.birthdate !== undefined) user.birthdate = dto.birthdate;
-    if (dto.latitude !== undefined) user.latitude = dto.latitude;
-    if (dto.longitude !== undefined) user.longitude = dto.longitude;
-    if (dto.city !== undefined) user.city = dto.city;
-    if (dto.country !== undefined) user.country = dto.country;
-    if (dto.isActive !== undefined) user.isActive = dto.isActive;
-    if (dto.preferences !== undefined) user.preferences = dto.preferences;
-    if (dto.photos !== undefined) user.photos = dto.photos;
+  async updateProfile(
+    dto: UpdateProfileDto,
+    id: string,
+    actorId = id,
+  ): Promise<PublicUserResponseDto> {
+    const updatedUser = await this.usersRepo.manager.transaction(
+      async (manager) => {
+        const usersRepo = manager.getRepository(User);
+        const sensitiveProfilesRepo =
+          manager.getRepository(UserSensitiveProfile);
+        const user = await usersRepo.findOne({ where: { id } });
+        if (!user) {
+          throw new NotFoundException(`No profile found for keycloakId=${id}`);
+        }
 
-    const updatedUser = await this.usersRepo.save(user);
+        if (dto.username !== undefined) user.username = dto.username;
+        if (dto.title !== undefined) user.title = dto.title;
+        if (dto.bio !== undefined) user.bio = dto.bio;
+        if (dto.gender !== undefined) user.gender = dto.gender;
+        if (dto.birthdate !== undefined) user.birthdate = dto.birthdate;
+        if (dto.heightCm !== undefined) user.heightCm = dto.heightCm;
+        if (dto.languagesSpoken !== undefined)
+          user.languagesSpoken = dto.languagesSpoken;
+        if (dto.latitude !== undefined) user.latitude = dto.latitude;
+        if (dto.longitude !== undefined) user.longitude = dto.longitude;
+        if (dto.city !== undefined) user.city = dto.city;
+        if (dto.country !== undefined) user.country = dto.country;
+        if (dto.isActive !== undefined) user.isActive = dto.isActive;
+        if (dto.preferences !== undefined) user.preferences = dto.preferences;
+
+        const sensitiveProfile = await sensitiveProfilesRepo
+          .createQueryBuilder("profile")
+          .addSelect([
+            "profile.relationshipTypesSought",
+            "profile.sexualInterests",
+            "profile.fantasiesText",
+            "profile.hasChildren",
+            "profile.wantsChildren",
+            "profile.relationshipTypesSoughtVisibility",
+            "profile.sexualInterestsVisibility",
+            "profile.fantasiesTextVisibility",
+            "profile.hasChildrenVisibility",
+            "profile.wantsChildrenVisibility",
+          ])
+          .where("profile.userId = :id", { id })
+          .getOne();
+
+        const profile =
+          sensitiveProfile ??
+          sensitiveProfilesRepo.create({
+            userId: id,
+          });
+
+        if (dto.relationshipTypesSought !== undefined)
+          profile.relationshipTypesSought = dto.relationshipTypesSought;
+        if (dto.sexualInterests !== undefined)
+          profile.sexualInterests = dto.sexualInterests;
+        if (dto.fantasiesText !== undefined)
+          profile.fantasiesText = dto.fantasiesText;
+        if (dto.hasChildren !== undefined)
+          profile.hasChildren = dto.hasChildren;
+        if (dto.wantsChildren !== undefined)
+          profile.wantsChildren = dto.wantsChildren;
+        if (dto.relationshipTypesSoughtVisibility !== undefined)
+          profile.relationshipTypesSoughtVisibility =
+            dto.relationshipTypesSoughtVisibility;
+        if (dto.sexualInterestsVisibility !== undefined)
+          profile.sexualInterestsVisibility = dto.sexualInterestsVisibility;
+        if (dto.fantasiesTextVisibility !== undefined)
+          profile.fantasiesTextVisibility = dto.fantasiesTextVisibility;
+        if (dto.hasChildrenVisibility !== undefined)
+          profile.hasChildrenVisibility = dto.hasChildrenVisibility;
+        if (dto.wantsChildrenVisibility !== undefined)
+          profile.wantsChildrenVisibility = dto.wantsChildrenVisibility;
+
+        await sensitiveProfilesRepo.save(profile);
+
+        return usersRepo.save(user);
+      },
+    );
+
+    if (
+      dto.relationshipTypesSought !== undefined ||
+      dto.sexualInterests !== undefined ||
+      dto.fantasiesText !== undefined ||
+      dto.hasChildren !== undefined ||
+      dto.wantsChildren !== undefined ||
+      dto.relationshipTypesSoughtVisibility !== undefined ||
+      dto.sexualInterestsVisibility !== undefined ||
+      dto.fantasiesTextVisibility !== undefined ||
+      dto.hasChildrenVisibility !== undefined ||
+      dto.wantsChildrenVisibility !== undefined
+    ) {
+      this.logger.log(
+        JSON.stringify({
+          event: "sensitive_profile_access",
+          action: "profile_updated",
+          actorId,
+          subjectUserId: id,
+          occurredAt: new Date().toISOString(),
+        }),
+      );
+    }
     this.logger.log(`Updated profile for user ${id}`);
-    return updatedUser;
+    return toPublicUserResponse(updatedUser);
   }
 
   async findById(
@@ -278,7 +489,7 @@ export class UsersService implements OnModuleInit {
     fieldToExtractCodes?: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
-  ): Promise<UserWithDistance> {
+  ): Promise<PublicUserResponseDto> {
     const user = await this.usersRepo.findOne({
       where: { id },
       select: resolveFields(fieldToExtractCodes),
@@ -288,7 +499,29 @@ export class UsersService implements OnModuleInit {
       throw new NotFoundException(`User ${id} not found`);
     }
 
-    return withDistance(user, currentUserLat, currentUserLon);
+    const sensitiveProfile = await this.sensitiveProfilesRepo.findOne({
+      where: { userId: id },
+      select: [
+        "relationshipTypesSought",
+        "sexualInterests",
+        "hasChildren",
+        "wantsChildren",
+      ],
+    });
+
+    return toPublicUserResponse(
+      withDistance(
+        {
+          ...user,
+          relationshipTypesSought: sensitiveProfile?.relationshipTypesSought,
+          sexualInterests: sensitiveProfile?.sexualInterests,
+          hasChildren: sensitiveProfile?.hasChildren,
+          wantsChildren: sensitiveProfile?.wantsChildren,
+        } as PublicProfileData,
+        currentUserLat,
+        currentUserLon,
+      ),
+    );
   }
 
   async findByUsername(
@@ -296,7 +529,7 @@ export class UsersService implements OnModuleInit {
     fieldToExtractCodes?: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
-  ): Promise<Partial<UserWithDistance>> {
+  ): Promise<PublicUserResponseDto> {
     const user = await this.usersRepo.findOne({
       where: { username },
       select: resolveFields(fieldToExtractCodes),
@@ -306,7 +539,29 @@ export class UsersService implements OnModuleInit {
       throw new NotFoundException(`User ${username} not found`);
     }
 
-    return withDistance(user, currentUserLat, currentUserLon);
+    const sensitiveProfile = await this.sensitiveProfilesRepo.findOne({
+      where: { userId: user.id },
+      select: [
+        "relationshipTypesSought",
+        "sexualInterests",
+        "hasChildren",
+        "wantsChildren",
+      ],
+    });
+
+    return toPublicUserResponse(
+      withDistance(
+        {
+          ...user,
+          relationshipTypesSought: sensitiveProfile?.relationshipTypesSought,
+          sexualInterests: sensitiveProfile?.sexualInterests,
+          hasChildren: sensitiveProfile?.hasChildren,
+          wantsChildren: sensitiveProfile?.wantsChildren,
+        } as PublicProfileData,
+        currentUserLat,
+        currentUserLon,
+      ),
+    );
   }
 
   /**
@@ -322,29 +577,41 @@ export class UsersService implements OnModuleInit {
     return user;
   }
 
-  async addPhoto(id: string, filename: string): Promise<User> {
+  async addPhoto(id: string, filename: string): Promise<PublicUserResponseDto> {
     const user = await this.findFullById(id);
     user.photos = [...(user.photos ?? []), filename];
-    return this.usersRepo.save(user);
+    return toPublicUserResponse(await this.usersRepo.save(user));
   }
 
   async discover(
     query: DiscoverQueryDto,
-    excludeUserId?: string,
+    currentUserId: string,
   ): Promise<PaginatedUsers> {
     const { gender, ageMin, ageMax, page = 1, limit = 20 } = query;
     const sanitizedPage = Math.max(1, Math.floor(page));
     const sanitizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
 
+    const currentUser = await this.usersRepo.findOne({
+      where: { id: currentUserId },
+      select: ["id", "gender"],
+    });
+    if (!currentUser) {
+      throw new NotFoundException(
+        `No profile found for keycloakId=${currentUserId}`,
+      );
+    }
+
     const qb = this.usersRepo
       .createQueryBuilder("user")
       .where("user.isActive = :isActive", { isActive: true });
 
-    if (excludeUserId) {
-      qb.andWhere("user.id != :excludeUserId", { excludeUserId });
-    }
-    if (gender) {
+    qb.andWhere("user.id != :currentUserId", { currentUserId });
+    if (gender !== undefined) {
       qb.andWhere("user.gender = :gender", { gender });
+    } else {
+      qb.andWhere("user.gender != :currentUserGender", {
+        currentUserGender: currentUser.gender,
+      });
     }
     if (ageMin) {
       const maxBirthdate = new Date();
@@ -371,6 +638,9 @@ export class UsersService implements OnModuleInit {
         "user.title",
         "user.birthdate",
         "user.gender",
+        "user.birthdate",
+        "user.heightCm",
+        "user.languagesSpoken",
         "user.city",
         "user.country",
         "user.latitude",
@@ -384,7 +654,9 @@ export class UsersService implements OnModuleInit {
 
     return {
       data: data.map((user) =>
-        withDistance(user, query.currentUserLat, query.currentUserLon),
+        toPublicUserResponse(
+          withDistance(user, query.currentUserLat, query.currentUserLon),
+        ),
       ),
       total,
       page: sanitizedPage,
@@ -393,10 +665,28 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  async softDelete(id: string): Promise<void> {
-    const user = await this.findFullById(id);
-    user.isActive = false;
-    await this.usersRepo.save(user);
+  async softDelete(id: string, actorId = id): Promise<void> {
+    await this.usersRepo.manager.transaction(async (manager) => {
+      const usersRepo = manager.getRepository(User);
+      const user = await usersRepo.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException(`No profile found for keycloakId=${id}`);
+      }
+
+      user.isActive = false;
+      await usersRepo.save(user);
+      await manager.getRepository(UserSensitiveProfile).delete({ userId: id });
+    });
+
+    this.logger.log(
+      JSON.stringify({
+        event: "sensitive_profile_access",
+        action: "account_deactivated_and_sensitive_profile_erased",
+        actorId,
+        subjectUserId: id,
+        occurredAt: new Date().toISOString(),
+      }),
+    );
 
     await this.kafkaProducer.emit<UserDeletedEvent>(KAFKA_TOPICS.USER_DELETED, {
       keycloakId: id,

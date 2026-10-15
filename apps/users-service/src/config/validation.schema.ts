@@ -11,6 +11,7 @@ export const validationSchema = Joi.object({
   USERS_DB_USER: Joi.string().default("hmeet_users"),
   USERS_DB_PASSWORD: Joi.string().default("hmeet_users_password"),
   USERS_DB_NAME: Joi.string().default("hmeet_users"),
+  SENSITIVE_PROFILE_ENCRYPTION_KEY: Joi.string().base64().length(44).optional(),
   KAFKA_BROKERS: Joi.string().default("localhost:29092"),
   KAFKA_GROUP_ID: Joi.string().default("users-service"),
   UPLOAD_DEST: Joi.string().default("./uploads"),

@@ -6,6 +6,9 @@ export const validationSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid("development", "production", "test")
     .default("development"),
+  API_GATEWAY_PUBLIC_URL: Joi.string()
+    .uri({ scheme: ["http", "https"] })
+    .default("http://localhost:3000"),
   OBJECT_STORAGE_ENDPOINT: Joi.string().default("localhost"),
   OBJECT_STORAGE_PORT: Joi.number().default(9000),
   OBJECT_STORAGE_ACCESS_KEY: Joi.string().default("minioadmin"),

@@ -15,7 +15,11 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
-import { CreateUserDto, DiscoverQueryDto, UpdateUserDto } from "./dto/user.dto";
+import {
+  CreateUserDto,
+  DiscoverQueryDto,
+  UpdateProfileDto,
+} from "./dto/user.dto";
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -102,20 +106,20 @@ export class UsersController {
   @ApiOperation({ summary: "Update your own profile" })
   async updateMyProfile(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpdateUserDto,
+    @Body() dto: UpdateProfileDto,
   ) {
-    return this.usersService.updateProfile(dto, user.id);
+    return this.usersService.updateProfile(dto, user.id, user.id);
   }
 
   @Put(":id/update")
   @ApiOperation({ summary: "Update a profile (self or admin only)" })
   async updateProfile(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpdateUserDto,
+    @Body() dto: UpdateProfileDto,
     @Param("id") id: string,
   ) {
     this.assertSelfOrAdmin(user, id);
-    return this.usersService.updateProfile(dto, id);
+    return this.usersService.updateProfile(dto, id, user.id);
   }
 
   @Get(":id")
@@ -134,6 +138,21 @@ export class UsersController {
     );
   }
 
+  @Get(":id/full")
+  @ApiOperation({ summary: "Get a user's full public profile" })
+  async getByIdFull(
+    @Param("id") id: string,
+    @Query("currentUserLat") currentUserLat?: number,
+    @Query("currentUserLon") currentUserLon?: number,
+  ) {
+    return this.usersService.findById(
+      id,
+      "Code-1",
+      currentUserLat,
+      currentUserLon,
+    );
+  }
+
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Soft delete a user (self or admin only)" })
@@ -142,6 +161,6 @@ export class UsersController {
     @Param("id") id: string,
   ) {
     this.assertSelfOrAdmin(user, id);
-    await this.usersService.softDelete(id);
+    await this.usersService.softDelete(id, user.id);
   }
 }

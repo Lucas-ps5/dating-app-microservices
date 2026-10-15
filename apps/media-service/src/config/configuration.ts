@@ -3,6 +3,8 @@ import { keycloakConfiguration } from "@app/common";
 export default () => ({
   port: parseInt(process.env.PORT || "3003", 10),
   nodeEnv: process.env.NODE_ENV || "development",
+  apiGatewayPublicUrl:
+    process.env.API_GATEWAY_PUBLIC_URL || "http://localhost:3000",
   objectStorage: {
     endpoint: process.env.OBJECT_STORAGE_ENDPOINT || "localhost",
     port: parseInt(process.env.OBJECT_STORAGE_PORT || "9000", 10),

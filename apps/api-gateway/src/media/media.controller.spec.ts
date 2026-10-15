@@ -3,7 +3,6 @@ import { PassThrough, Readable } from "stream";
 import type { AxiosResponse } from "axios";
 import { MediaController } from "./media.controller";
 import { MediaProxyService } from "./media-proxy.service";
-import type { AuthenticatedUser } from "@app/common";
 
 type MockResponse = PassThrough & {
   statusCode?: number;
@@ -13,12 +12,6 @@ type MockResponse = PassThrough & {
   setHeader: jest.Mock;
   destroy: jest.Mock;
 };
-
-const USER: AuthenticatedUser = {
-  id: "user-1",
-  email: "owner@example.com",
-  roles: ["user"],
-} as AuthenticatedUser;
 
 /** A real writable, since the controller calls `stream.pipe(response)`. */
 function mockResponse(): MockResponse {
@@ -68,16 +61,12 @@ describe("MediaController.getImage", () => {
 
     await controller.getImage(
       ["general", "abc.png"],
-      USER,
-      "Bearer token",
       response as never,
     );
 
     // A raw array would have been sent upstream as "general,abc.png".
     expect(getImage).toHaveBeenCalledWith(
       "general/abc.png",
-      USER,
-      "Bearer token",
     );
   });
 
@@ -95,8 +84,6 @@ describe("MediaController.getImage", () => {
 
     await controller.getImage(
       "general/abc.png",
-      USER,
-      undefined,
       response as never,
     );
 
@@ -136,8 +123,6 @@ describe("MediaController.getImage", () => {
 
     await controller.getImage(
       "general/abc.png",
-      USER,
-      undefined,
       response as never,
     );
 
@@ -157,8 +142,6 @@ describe("MediaController.getImage", () => {
 
     await controller.getImage(
       "general/gone.png",
-      USER,
-      undefined,
       response as never,
     );
 
@@ -180,8 +163,6 @@ describe("MediaController.getImage", () => {
 
     await controller.getImage(
       "general/abc.png",
-      USER,
-      undefined,
       response as never,
     );
 

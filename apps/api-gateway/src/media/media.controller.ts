@@ -27,12 +27,16 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import type { Response } from "express";
-import { AuthenticatedUser, CurrentUser, JwtAuthGuard } from "@app/common";
+import {
+  AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+  Public,
+} from "@app/common";
 import { errorMessage, objectNameToPath } from "@app/common/utils/utils";
 import { MediaProxyService } from "./media-proxy.service";
 
 @ApiTags("media")
-@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller("media")
 export class MediaController {
@@ -41,6 +45,7 @@ export class MediaController {
   constructor(private readonly mediaProxy: MediaProxyService) {}
 
   @Post("images")
+  @ApiBearerAuth()
   @UseInterceptors(
     FileInterceptor("photo", {
       storage: memoryStorage(),
@@ -82,6 +87,7 @@ export class MediaController {
   }
 
   @Get("images/presign")
+  @ApiBearerAuth()
   @ApiOperation({
     summary: "Get a presigned download URL for a private object",
   })
@@ -104,18 +110,15 @@ export class MediaController {
   }
 
   @Get("images/*objectName")
+  @Public()
   @ApiOperation({ summary: "Stream an image file" })
   @ApiProduces("image/png", "image/jpeg", "image/webp", "image/gif")
   async getImage(
     @Param("objectName") objectName: string | string[],
-    @CurrentUser() user: AuthenticatedUser,
-    @Headers("authorization") authorization: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
     const upstream = await this.mediaProxy.getImage(
       objectNameToPath(objectName),
-      user,
-      authorization,
     );
 
     // Errors come back as JSON, but `responseType: "stream"` means the body is
@@ -184,6 +187,7 @@ export class MediaController {
   }
 
   @Delete("images/*objectName")
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete an image from object storage" })
   async deleteImage(

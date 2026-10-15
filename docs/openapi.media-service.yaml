@@ -6,8 +6,8 @@ info:
     Internal HTTP API for image storage and retrieval via S3-compatible object storage.
     **Not exposed publicly** — called only by the api-gateway over the internal Docker network.
 
-    **Authentication**: Caller identity is forwarded via the `x-user-id` header
-    (extracted from the Keycloak JWT by the api-gateway).
+    **Authentication**: Upload, presign and delete operations require a caller
+    identity forwarded via `x-user-id`. Image streaming is public.
 
     **Storage backend**: RustFS bucket `hmeet-media`
     - S3 API:     http://localhost:9000
@@ -20,8 +20,11 @@ info:
     **Async events (Kafka)**:
     | Event | Topic | Produced when |
     |---|---|---|
-    | `image.uploaded` | `media-events` | Image successfully stored in object storage |
-    | `image.deleted`  | `media-events` | Image removed from object storage |
+    | `image.uploaded` | `image.uploaded` | Image metadata and outbox event committed |
+    | `image.deleted`  | `image.deleted` | Image removal and outbox event committed |
+
+    The event payload contains `ownerId`, `objectName`, `url`, and `context`.
+    Events are published from a database outbox and retried while Kafka is unavailable.
 
     **Database**: PostgreSQL (`hmeet_media` — port 5435 in development)
     Stores image metadata (imageName, originalName, imageType, imageSize, imageUrl).
@@ -139,7 +142,7 @@ components:
 
 paths:
 
-  /media/images:
+  /images:
     post:
       tags: [images]
       summary: Upload an image to object storage
@@ -147,9 +150,9 @@ paths:
         Stores the image in the `hmeet-media` bucket under a path derived from the
         caller's `x-user-id` header and a generated UUID object name.
 
-        After a successful upload, the service:
-        1. Saves metadata to the `images` PostgreSQL table
-        2. Publishes an `image.uploaded` Kafka event to `media-events`
+        After a successful upload, the service commits image metadata and an
+        `image.uploaded` event to the media database in one transaction. The
+        outbox publisher retries Kafka delivery if the broker is unavailable.
       operationId: uploadImage
       parameters:
         - name: x-user-id
@@ -193,7 +196,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/UploadImageResponse"
               example:
-                imageUrl: "http://localhost:9000/hmeet-media/users/abc123/7c9a2b3d.jpg"
+                imageUrl: "http://localhost:3000/api/media/images/users/abc123/7c9a2b3d.jpg"
                 objectName: "users/abc123/7c9a2b3d.jpg"
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -204,7 +207,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /media/images/presign:
+  /images/presign:
     get:
       tags: [images]
       summary: Get a presigned download URL for a private object
@@ -242,7 +245,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /media/images/{objectName}:
+  /images/{objectName}:
+    get:
+      tags: [images]
+      summary: Stream a public image
+      description: Returns image bytes without requiring caller identity.
+      operationId: getImage
+      security: []
+      parameters:
+        - name: objectName
+          in: path
+          required: true
+          description: S3 object key; nested paths such as avatar/photo.jpg are supported
+          schema:
+            type: string
+          example: "avatar/abc123.jpg"
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       tags: [images]
       summary: Delete an image from object storage

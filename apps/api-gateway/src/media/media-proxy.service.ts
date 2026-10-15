@@ -76,7 +76,7 @@ export class MediaProxyService {
       contentType: file.mimetype,
     });
 
-    const url = `${this.serviceUrl}/media/images?context=${encodeURIComponent(context)}`;
+    const url = `${this.serviceUrl}/images?context=${encodeURIComponent(context)}`;
     this.logger.debug(`Streaming upload to media-service: ${url}`);
 
     const config: AxiosRequestConfig = {
@@ -99,7 +99,7 @@ export class MediaProxyService {
     user: AuthenticatedUser,
     authorization?: string,
   ): Promise<AxiosResponse<PresignedUrlResponse>> {
-    const url = `${this.serviceUrl}/media/images/presign`;
+    const url = `${this.serviceUrl}/images/presign`;
     const config: AxiosRequestConfig = {
       timeout: DEFAULT_TIMEOUT_MS,
       params: { objectName, expires },
@@ -120,15 +120,12 @@ export class MediaProxyService {
    */
   async getImage(
     objectName: string,
-    user: AuthenticatedUser,
-    authorization?: string,
   ): Promise<AxiosResponse<NodeJS.ReadableStream>> {
-    const url = `${this.serviceUrl}/media/images/${encodeURIComponent(objectName)}`;
+    const url = `${this.serviceUrl}/images/${encodeURIComponent(objectName)}`;
     const config: AxiosRequestConfig = {
       timeout: DEFAULT_TIMEOUT_MS,
       responseType: "stream",
       validateStatus: () => true,
-      headers: this.passthroughHeaders(user, authorization),
     };
 
     return this.call(
@@ -142,7 +139,7 @@ export class MediaProxyService {
     user: AuthenticatedUser,
     authorization?: string,
   ): Promise<AxiosResponse<void>> {
-    const url = `${this.serviceUrl}/media/images/${encodeURIComponent(objectName)}`;
+    const url = `${this.serviceUrl}/images/${encodeURIComponent(objectName)}`;
     const config: AxiosRequestConfig = {
       timeout: DEFAULT_TIMEOUT_MS,
       headers: this.passthroughHeaders(user, authorization),

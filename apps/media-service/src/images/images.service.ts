@@ -4,11 +4,15 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { ObjectStorageService } from "../object-storage/object-storage.service";
-import { KafkaProducerService } from "../kafka/kafka-producer.service";
-import { KAFKA_TOPICS, ImageDeletedEvent } from "@app/common";
+import {
+  ImageDeletedEvent,
+  ImageUploadedEvent,
+  KAFKA_TOPICS,
+} from "@app/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { DataSource, EntityManager, Repository } from "typeorm";
 import { Image } from "./image.entity";
 import { v4 as uuidv4 } from "uuid";
 import type { Readable } from "stream";
@@ -25,14 +29,21 @@ const ADMIN_ROLE = "admin";
 @Injectable()
 export class ImagesService {
   private readonly logger = new Logger(ImagesService.name);
+  private readonly apiGatewayPublicUrl: string;
 
   constructor(
     @InjectRepository(Image)
     private readonly imagesRepo: Repository<Image>,
 
     private readonly objectStorage: ObjectStorageService,
-    private readonly kafkaProducer: KafkaProducerService,
-  ) {}
+    private readonly dataSource: DataSource,
+    configService: ConfigService,
+  ) {
+    this.apiGatewayPublicUrl = (
+      configService.get<string>("apiGatewayPublicUrl") ??
+      "http://localhost:3000"
+    ).replace(/\/+$/, "");
+  }
 
   async uploadImage(
     buffer: Buffer,
@@ -42,13 +53,18 @@ export class ImagesService {
     context = "general",
   ): Promise<UploadResult> {
     const id = uuidv4();
-    const { objectName, url } = await this.objectStorage.upload(
+    const { objectName } = await this.objectStorage.upload(
       buffer,
       originalName,
       id,
       mimetype,
       context,
     );
+    const encodedObjectName = objectName
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/");
+    const url = `${this.apiGatewayPublicUrl}/api/media/images/${encodedObjectName}`;
 
     const image = this.imagesRepo.create({
       id,
@@ -62,7 +78,11 @@ export class ImagesService {
     });
 
     try {
-      await this.imagesRepo.save(image);
+      const event: ImageUploadedEvent = { objectName, ownerId, url, context };
+      await this.dataSource.transaction(async (manager) => {
+        await manager.save(image);
+        await this.enqueueEvent(manager, KAFKA_TOPICS.IMAGE_UPLOADED, event);
+      });
     } catch (error) {
       // If DB save fails, delete the file so we don't leave an orphaned object.
       this.logger.error(
@@ -112,23 +132,19 @@ export class ImagesService {
     return this.objectStorage.presignedUrl(objectName, expiresSeconds);
   }
 
-  /**
-   * Resolves an object to a readable stream plus the metadata needed for HTTP
-   * response headers. Ownership is checked first, so this cannot be used to
-   * read another user's image. The stream is lazy: the object request only
-   * starts once the caller consumes it.
-   */
-  async getImageStream(
-    objectName: string,
-    requesterId: string,
-    requesterRoles: string[] = [],
-  ): Promise<{
+  /** Resolves a public image key to its stream and response metadata. */
+  async getImageStream(objectName: string): Promise<{
     stream: Readable;
     contentType: string;
     size: number;
     fileName: string;
   }> {
-    const image = await this.findOwned(objectName, requesterId, requesterRoles);
+    const image = await this.imagesRepo.findOne({
+      where: { imageName: objectName },
+    });
+    if (!image) {
+      throw new NotFoundException(`Image ${objectName} not found`);
+    }
     const size = await this.objectStorage.objectSize(objectName);
     const stream = await this.objectStorage.getObjectStream(objectName);
 
@@ -150,10 +166,22 @@ export class ImagesService {
 
     await this.objectStorage.delete(objectName);
 
-    await this.imagesRepo.delete({ imageName: objectName });
-
     const event: ImageDeletedEvent = { objectName, ownerId };
-    await this.kafkaProducer.emit(KAFKA_TOPICS.IMAGE_DELETED, event);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(Image, { imageName: objectName });
+      await this.enqueueEvent(manager, KAFKA_TOPICS.IMAGE_DELETED, event);
+    });
     this.logger.log(`Image deleted: ${objectName} by owner ${ownerId}`);
+  }
+
+  private async enqueueEvent(
+    manager: EntityManager,
+    topic: string,
+    payload: object,
+  ): Promise<void> {
+    await manager.query(
+      'INSERT INTO "media_outbox_events" ("topic", "payload") VALUES ($1, $2::jsonb)',
+      [topic, JSON.stringify(payload)],
+    );
   }
 }

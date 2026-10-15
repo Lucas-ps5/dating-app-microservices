@@ -8,6 +8,8 @@ import { validationSchema } from "./config/validation.schema";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthModule } from "@app/common";
 import { Image } from "./images/image.entity";
+import { MediaOutboxEvent } from "./kafka/outbox-event.entity";
+import { CreateMediaOutboxEvents1710000000000 } from "./migrations/1710000000000-create-media-outbox-events";
 
 @Module({
   imports: [
@@ -26,7 +28,9 @@ import { Image } from "./images/image.entity";
         username: config.get<string>("database.username"),
         password: config.get<string>("database.password"),
         database: config.get<string>("database.name"),
-        entities: [Image],
+        entities: [Image, MediaOutboxEvent],
+        migrations: [CreateMediaOutboxEvents1710000000000],
+        migrationsRun: true,
         synchronize: config.get<string>("nodeEnv") !== "production",
         logging: config.get<string>("nodeEnv") === "development",
       }),

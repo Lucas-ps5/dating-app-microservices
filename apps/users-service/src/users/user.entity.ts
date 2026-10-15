@@ -21,6 +21,8 @@ export interface UserPreferences {
   ageMax?: number;
   genderPreference?: string;
   maxDistance?: number;
+  heightMinCm?: number;
+  heightMaxCm?: number;
 }
 
 @Entity("users")
@@ -52,6 +54,12 @@ export class User {
 
   @Column({ type: "date", nullable: true })
   birthdate?: string;
+
+  @Column({ type: "integer", nullable: true })
+  heightCm?: number;
+
+  @Column("text", { array: true, default: () => "'{}'" })
+  languagesSpoken!: string[];
 
   // 5. Using the Enum type for the database column
   @Column({

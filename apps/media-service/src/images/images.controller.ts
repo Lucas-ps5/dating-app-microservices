@@ -27,7 +27,12 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { ImagesService } from "./images.service";
-import { AuthenticatedUser, CurrentUser, JwtAuthGuard } from "@app/common";
+import {
+  AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+  Public,
+} from "@app/common";
 import { objectNameToPath } from "@app/common/utils/utils";
 
 const ALLOWED_MIMETYPES = [
@@ -40,13 +45,13 @@ const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_PRESIGN_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 @ApiTags("media")
-@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("media/images")
+@Controller("images")
 export class ImagesController {
   constructor(private readonly imagesService: ImagesService) {}
 
   @Post()
+  @ApiBearerAuth()
   @UseInterceptors(
     FileInterceptor("photo", {
       storage: memoryStorage(), // File lives in memory; object storage persists it.
@@ -99,6 +104,7 @@ export class ImagesController {
   }
 
   @Get("presign")
+  @ApiBearerAuth()
   @ApiOperation({ summary: "Get a presigned download URL for an object" })
   @ApiQuery({ name: "objectName", required: true })
   @ApiQuery({ name: "expires", required: false, example: 3600 })
@@ -128,19 +134,15 @@ export class ImagesController {
 
   // Declared after `presign` so the literal path wins over the wildcard.
   @Get("*objectName")
+  @Public()
   @ApiOperation({ summary: "Stream an image file" })
   @ApiProduces("image/png", "image/jpeg", "image/webp", "image/gif")
   async getImage(
-    @CurrentUser() user: AuthenticatedUser,
     @Param("objectName") objectName: string | string[],
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
     const { stream, contentType, size, fileName } =
-      await this.imagesService.getImageStream(
-        objectNameToPath(objectName),
-        user.id,
-        user.roles,
-      );
+      await this.imagesService.getImageStream(objectNameToPath(objectName));
 
     response.set({
       "Content-Type": contentType,
@@ -148,7 +150,7 @@ export class ImagesController {
       // objectName is server-generated (uuid) but originalName is user
       // supplied, so encode rather than interpolating it raw.
       "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": "public, max-age=3600",
     });
 
     return new StreamableFile(stream);
@@ -157,6 +159,7 @@ export class ImagesController {
   // path-to-regexp v8 (Nest 11) rejects the Express 4 `:param(*)` syntax.
   // A named wildcard still matches the `folder/name.ext` object key shape.
   @Delete("*objectName")
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Delete an image from object storage" })
   async deleteImage(

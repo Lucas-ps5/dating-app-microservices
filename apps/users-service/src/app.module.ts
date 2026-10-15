@@ -5,6 +5,9 @@ import { AuthModule } from "@app/common";
 import { UsersModule } from "./users/users.module";
 import { KafkaModule } from "./kafka/kafka.module";
 import { User } from "./users/user.entity";
+import { UserSensitiveProfile } from "./users/user-sensitive-profile.entity";
+import { CreateUsersTable1760490000000 } from "./migrations/1760490000000-create-users-table";
+import { AddUserProfileFields1760500000000 } from "./migrations/1760500000000-add-user-profile-fields";
 import usersConfiguration from "./config/configuration";
 import { validationSchema } from "./config/validation.schema";
 
@@ -25,8 +28,13 @@ import { validationSchema } from "./config/validation.schema";
         username: config.get<string>("database.username"),
         password: config.get<string>("database.password"),
         database: config.get<string>("database.name"),
-        entities: [User],
-        synchronize: config.get<string>("nodeEnv") !== "production",
+        entities: [User, UserSensitiveProfile],
+        migrations: [
+          CreateUsersTable1760490000000,
+          AddUserProfileFields1760500000000,
+        ],
+        migrationsRun: true,
+        synchronize: false,
         logging: config.get<string>("nodeEnv") === "development",
       }),
     }),

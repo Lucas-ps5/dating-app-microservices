@@ -13,6 +13,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KafkaProducerService.name);
   private producer: Producer;
   private connected = false;
+  private connecting?: Promise<void>;
 
   constructor(private readonly configService: ConfigService) {
     const brokers = this.configService.get<string[]>("kafka.brokers") ?? [
@@ -24,12 +25,10 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     try {
-      await this.producer.connect();
-      this.connected = true;
-      this.logger.log("Kafka producer connected");
+      await this.connect();
     } catch (err) {
       this.logger.warn(
-        `Kafka unavailable: ${errorMessage(err)} â€“ events will be skipped`,
+        `Kafka unavailable: ${errorMessage(err)}; queued events will retry`,
       );
     }
   }
@@ -38,15 +37,27 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
     if (this.connected) await this.producer.disconnect();
   }
 
-  async emit(topic: string, payload: unknown): Promise<void> {
-    if (!this.connected) return;
-    try {
-      await this.producer.send({
-        topic,
-        messages: [{ value: JSON.stringify(payload) }],
-      });
-    } catch (err) {
-      this.logger.error(`Failed to emit "${topic}": ${errorMessage(err)}`);
+  async publish(topic: string, payload: unknown): Promise<void> {
+    await this.connect();
+    await this.producer.send({
+      topic,
+      messages: [{ value: JSON.stringify(payload) }],
+    });
+  }
+
+  private async connect(): Promise<void> {
+    if (this.connected) return;
+    if (!this.connecting) {
+      this.connecting = this.producer
+        .connect()
+        .then(() => {
+          this.connected = true;
+          this.logger.log("Kafka producer connected");
+        })
+        .finally(() => {
+          this.connecting = undefined;
+        });
     }
+    await this.connecting;
   }
 }

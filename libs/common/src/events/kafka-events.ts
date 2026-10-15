@@ -4,6 +4,7 @@ export const KAFKA_TOPICS = {
   LIKE_CREATED: "like.created",
   MATCH_CREATED: "match.created",
   MESSAGE_SENT: "message.sent",
+  IMAGE_UPLOADED: "image.uploaded",
   IMAGE_DELETED: "image.deleted",
 } as const;
 
@@ -42,4 +43,11 @@ export interface MessageSentEvent {
 export interface ImageDeletedEvent {
   objectName: string;
   ownerId: string;
+}
+
+export interface ImageUploadedEvent {
+  objectName: string;
+  ownerId: string;
+  url: string;
+  context: string;
 }

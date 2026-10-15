@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { Message } from "./message.entity";
+import { Conversation } from "./conversation.entity";
 import { MessagesController } from "./messages.controller";
 import { MessagesService } from "./messages.service";
 import { KafkaProducerModule } from "../kafka/kafka-producer.module";
@@ -8,7 +9,7 @@ import { MatchesModule } from "../matches/matches.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Message]),
+    TypeOrmModule.forFeature([Message, Conversation]),
     KafkaProducerModule,
     MatchesModule,
   ],
