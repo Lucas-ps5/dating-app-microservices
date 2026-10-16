@@ -84,4 +84,12 @@ export class LikesController {
     }
     return like;
   }
+
+  @Get("has-liked/:userId")
+  hasLiked(
+    @CurrentUser("id") currentUserId: string,
+    @Param("userId") userId: string,
+  ) {
+    return this.likesService.hasLiked(currentUserId, userId);
+  }
 }

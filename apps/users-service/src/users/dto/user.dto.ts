@@ -17,6 +17,7 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
   ArrayUnique,
+  IsUUID,
   IsIn,
   registerDecorator,
   ValidationOptions,
@@ -322,6 +323,29 @@ export class UpdateProfileDto {
 
 export class UpdateUserDto extends UpdateProfileDto {}
 
+export class UpdateLocationDto {
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @Type(() => Number)
+  @ApiProperty({ example: 37.7749, minimum: -90, maximum: 90 })
+  latitude!: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @Type(() => Number)
+  @ApiProperty({ example: -122.4194, minimum: -180, maximum: 180 })
+  longitude!: number;
+}
+
+export class FindUsersByIdsDto {
+  @IsArray()
+  @IsUUID("all", { each: true })
+  @ApiProperty({ type: [String], format: "uuid" })
+  userIds!: string[];
+}
+
 @Exclude()
 export class PublicUserResponseDto {
   @Expose()
@@ -384,6 +408,12 @@ export class PublicUserResponseDto {
 
   @Expose()
   distance?: number;
+
+  @Expose()
+  createdAt?: string;
+
+  @Expose()
+  updatedAt?: string;
 }
 
 export class DiscoverQueryDto {

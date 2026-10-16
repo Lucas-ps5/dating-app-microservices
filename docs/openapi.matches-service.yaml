@@ -224,6 +224,15 @@ components:
           description: Total count
           example: 14
 
+    HasLikedResponse:
+      type: object
+      required: [liked]
+      properties:
+        liked:
+          type: boolean
+          description: Whether the authenticated user has liked the requested user
+          example: true
+
     CreationResponse:
       type: object
       required: [newId]
@@ -553,14 +562,6 @@ paths:
       summary: List likes received by a user (paginated)
       description: Returns all likes where `receiverId` matches the given `userId`, ordered by `createdAt` descending.
       parameters:
-        - name: userId
-          in: path
-          required: true
-          description: UUID of the user
-          schema:
-            type: string
-            format: uuid
-          example: "11111111-1111-1111-1111-111111111111"
         - $ref: "#/components/parameters/PageParam"
         - $ref: "#/components/parameters/LimitParam"
       responses:
@@ -578,14 +579,6 @@ paths:
       summary: List likes sent by a user (paginated)
       description: Returns all likes where `senderId` matches the given `userId`, ordered by `createdAt` descending.
       parameters:
-        - name: userId
-          in: path
-          required: true
-          description: UUID of the user
-          schema:
-            type: string
-            format: uuid
-          example: "11111111-1111-1111-1111-111111111111"
         - $ref: "#/components/parameters/PageParam"
         - $ref: "#/components/parameters/LimitParam"
       responses:
@@ -601,16 +594,6 @@ paths:
       tags: [likes]
       operationId: countReceivedLikes
       summary: Count total likes received by a user
-      parameters:
-        - $ref: "#/components/parameters/UserIdHeader"
-        - name: userId
-          in: path
-          required: true
-          description: UUID of the user
-          schema:
-            type: string
-            format: uuid
-          example: "11111111-1111-1111-1111-111111111111"
       responses:
         "200":
           description: Total count of received likes
@@ -626,15 +609,6 @@ paths:
       tags: [likes]
       operationId: countSentLikes
       summary: Count total likes sent by a user
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          description: UUID of the user
-          schema:
-            type: string
-            format: uuid
-          example: "11111111-1111-1111-1111-111111111111"
       responses:
         "200":
           description: Total count of sent likes
@@ -644,6 +618,32 @@ paths:
                 $ref: "#/components/schemas/CountResponse"
               example:
                 count: 7
+
+  /likes/has-liked/{userId}:
+    get:
+      tags: [likes]
+      operationId: hasLiked
+      summary: Check whether the authenticated user has liked another user
+      description: >-
+        Returns `liked: true` for a `LIKE` or `SUPER_LIKE` sent by the authenticated user to the specified user.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: UUID of the user to check
+          schema:
+            type: string
+            format: uuid
+          example: "22222222-2222-2222-2222-222222222222"
+      responses:
+        "200":
+          description: Like status for the requested user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HasLikedResponse"
+              example:
+                liked: true
 
   /likes/{id}:
     get:

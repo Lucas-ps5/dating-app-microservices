@@ -75,11 +75,11 @@ export class User {
   @Column({ type: "decimal", precision: 10, scale: 7, nullable: true })
   longitude?: number;
 
-  @Column({ nullable: true })
-  city?: string;
+  @Column({ type: "varchar", nullable: true })
+  city?: string | null;
 
-  @Column({ nullable: true })
-  country?: string;
+  @Column({ type: "varchar", nullable: true })
+  country?: string | null;
 
   // Photos (array of filenames/URLs)
   @Column("text", { array: true, default: () => "'{}'" })

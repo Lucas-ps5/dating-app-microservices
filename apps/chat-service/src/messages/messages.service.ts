@@ -57,11 +57,11 @@ export class MessagesService {
       throw new BadRequestException("You cannot message yourself");
     }
 
-    if (!(await this.matchesService.areMatched(senderId, receiverId))) {
-      throw new ForbiddenException(
-        "You can only message users you have matched with",
-      );
-    }
+    // if (!(await this.matchesService.areMatched(senderId, receiverId))) {
+    //   throw new ForbiddenException(
+    //     "You can only message users you have matched with",
+    //   );
+    // }
     // 1. THE GOLDEN RULE: Sort UUIDs alphabetically
     const sortedIds = [senderId, receiverId].sort();
     const user1Id = sortedIds[0];
@@ -103,9 +103,11 @@ export class MessagesService {
 
       // --- NEW: Increment the unread count for the RECEIVER ---
       if (receiverId === user1Id) {
-        conversation.unreadCountUser1 += 1;
+        conversation.unreadCountUser1 =
+          (conversation.unreadCountUser1 ?? 0) + 1;
       } else {
-        conversation.unreadCountUser2 += 1;
+        conversation.unreadCountUser2 =
+          (conversation.unreadCountUser2 ?? 0) + 1;
       }
 
       await queryRunner.manager.save(conversation);

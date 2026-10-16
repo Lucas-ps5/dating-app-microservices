@@ -2,7 +2,9 @@ import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import {
   CreateUserDto,
+  FindUsersByIdsDto,
   PublicUserResponseDto,
+  UpdateLocationDto,
   UpdateProfileDto,
 } from "./user.dto";
 import { RelationshipType } from "../user-profile.enums";
@@ -22,6 +24,26 @@ function dateAtAge(age: number, dayOffset = 0): string {
 }
 
 describe("user profile DTOs", () => {
+  it("validates arrays of user IDs for bulk lookup", async () => {
+    const valid = Object.assign(new FindUsersByIdsDto(), {
+      userIds: ["a3bb189e-8bf9-3888-9912-ace4e6543002"],
+    });
+    const invalid = Object.assign(new FindUsersByIdsDto(), {
+      userIds: ["not-a-uuid"],
+    });
+    const nonArray = Object.assign(new FindUsersByIdsDto(), {
+      userIds: "a3bb189e-8bf9-3888-9912-ace4e6543002",
+    });
+
+    expect(await validate(valid)).toHaveLength(0);
+    expect((await validate(invalid)).map((error) => error.property)).toContain(
+      "userIds",
+    );
+    expect((await validate(nonArray)).map((error) => error.property)).toContain(
+      "userIds",
+    );
+  });
+
   it("does not accept profile-only fields during registration", async () => {
     const registration = Object.assign(new CreateUserDto(), {
       email: "member@example.com",
@@ -52,6 +74,26 @@ describe("user profile DTOs", () => {
     expect(await validate(adult)).toHaveLength(0);
     expect((await validate(underage)).map((error) => error.property)).toContain(
       "birthdate",
+    );
+  });
+
+  it("requires valid geographic coordinates for location updates", async () => {
+    const valid = plainToInstance(UpdateLocationDto, {
+      latitude: "0",
+      longitude: "0",
+    });
+    const invalid = plainToInstance(UpdateLocationDto, {
+      latitude: 91,
+      longitude: -181,
+    });
+    const missing = plainToInstance(UpdateLocationDto, {});
+
+    expect(await validate(valid)).toHaveLength(0);
+    expect((await validate(invalid)).map((error) => error.property)).toEqual(
+      expect.arrayContaining(["latitude", "longitude"]),
+    );
+    expect((await validate(missing)).map((error) => error.property)).toEqual(
+      expect.arrayContaining(["latitude", "longitude"]),
     );
   });
 

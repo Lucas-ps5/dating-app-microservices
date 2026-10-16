@@ -6,11 +6,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { CountResponse, CreationResponse, KAFKA_TOPICS } from "@app/common";
 import { MatchesService } from "../matches/matches.service";
 import { CreateLikeDto } from "./dto/create-like.dto";
 import { Like } from "./entities/like.entity";
+import { SwipeType } from "./enums/swipe-type.enum";
 import { KafkaProducerService } from "../src/kafka/kafka-producer.service";
 
 export interface PaginatedLikes {
@@ -235,5 +236,17 @@ export class LikesService {
   async countMyReceivedLikes(userId: string): Promise<CountResponse> {
     const count = await this.likeRepo.countBy({ receiverId: userId });
     return { count };
+  }
+
+  async hasLiked(
+    senderId: string,
+    receiverId: string,
+  ): Promise<{ liked: boolean }> {
+    const count = await this.likeRepo.countBy({
+      senderId,
+      receiverId,
+      type: In([SwipeType.LIKE, SwipeType.SUPER_LIKE]),
+    });
+    return { liked: count > 0 };
   }
 }

@@ -36,6 +36,7 @@ describe("LikesController", () => {
     findAllMySentLikes: jest.Mock;
     countMyReceivedLikes: jest.Mock;
     countMySentLikes: jest.Mock;
+    hasLiked: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -48,6 +49,7 @@ describe("LikesController", () => {
       findAllMySentLikes: jest.fn(),
       countMyReceivedLikes: jest.fn(),
       countMySentLikes: jest.fn(),
+      hasLiked: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -103,6 +105,15 @@ describe("LikesController", () => {
 
     controller.countMySentLikes(SENDER_ID);
     expect(likesService.countMySentLikes).toHaveBeenCalledWith(SENDER_ID);
+  });
+
+  it("checks whether the caller liked the requested user", () => {
+    likesService.hasLiked.mockReturnValue({ liked: true });
+
+    const result = controller.hasLiked(SENDER_ID, RECEIVER_ID);
+
+    expect(likesService.hasLiked).toHaveBeenCalledWith(SENDER_ID, RECEIVER_ID);
+    expect(result).toEqual({ liked: true });
   });
 
   describe("findOne", () => {

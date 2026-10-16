@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, QueryFailedError } from "typeorm";
+import { Repository, QueryFailedError, In } from "typeorm";
 import { plainToInstance } from "class-transformer";
 import { ConfigService } from "@nestjs/config";
 import { User } from "./user.entity";
@@ -16,6 +16,7 @@ import {
   CreateUserDto,
   DiscoverQueryDto,
   PublicUserResponseDto,
+  UpdateLocationDto,
   UpdateProfileDto,
 } from "./dto/user.dto";
 import { KafkaProducerService } from "../kafka/kafka-producer.service";
@@ -54,6 +55,8 @@ const FIELD_MAP: Record<FieldToExtractCodes, readonly (keyof User)[]> = {
     "longitude",
     "city",
     "country",
+    "createdAt",
+    "updatedAt",
   ],
   "Code-2": [
     "id",
@@ -377,86 +380,101 @@ export class UsersService implements OnModuleInit {
     }
   }
 
+  async updateLocation(
+    id: string,
+    dto: UpdateLocationDto,
+  ): Promise<{ city?: string; country?: string }> {
+    const user = await this.findFullById(id);
+    const location = await this.reverseGeocode(dto.latitude, dto.longitude);
+
+    user.latitude = dto.latitude;
+    user.longitude = dto.longitude;
+    user.city = location?.city ?? null;
+    user.country = location?.country ?? null;
+    await this.usersRepo.save(user);
+
+    return {
+      city: location?.city,
+      country: location?.country,
+    };
+  }
+
   async updateProfile(
     dto: UpdateProfileDto,
     id: string,
     actorId = id,
-  ): Promise<PublicUserResponseDto> {
-    const updatedUser = await this.usersRepo.manager.transaction(
-      async (manager) => {
-        const usersRepo = manager.getRepository(User);
-        const sensitiveProfilesRepo =
-          manager.getRepository(UserSensitiveProfile);
-        const user = await usersRepo.findOne({ where: { id } });
-        if (!user) {
-          throw new NotFoundException(`No profile found for keycloakId=${id}`);
-        }
+  ): Promise<void> {
+    await this.usersRepo.manager.transaction(async (manager) => {
+      const usersRepo = manager.getRepository(User);
+      const sensitiveProfilesRepo = manager.getRepository(UserSensitiveProfile);
+      const user = await usersRepo.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException(`No profile found for keycloakId=${id}`);
+      }
 
-        if (dto.username !== undefined) user.username = dto.username;
-        if (dto.title !== undefined) user.title = dto.title;
-        if (dto.bio !== undefined) user.bio = dto.bio;
-        if (dto.gender !== undefined) user.gender = dto.gender;
-        if (dto.birthdate !== undefined) user.birthdate = dto.birthdate;
-        if (dto.heightCm !== undefined) user.heightCm = dto.heightCm;
-        if (dto.languagesSpoken !== undefined)
-          user.languagesSpoken = dto.languagesSpoken;
-        if (dto.latitude !== undefined) user.latitude = dto.latitude;
-        if (dto.longitude !== undefined) user.longitude = dto.longitude;
-        if (dto.city !== undefined) user.city = dto.city;
-        if (dto.country !== undefined) user.country = dto.country;
-        if (dto.isActive !== undefined) user.isActive = dto.isActive;
-        if (dto.preferences !== undefined) user.preferences = dto.preferences;
+      if (dto.username !== undefined) user.username = dto.username;
+      if (dto.title !== undefined) user.title = dto.title;
+      if (dto.bio !== undefined) user.bio = dto.bio;
+      if (dto.gender !== undefined) user.gender = dto.gender;
+      if (dto.birthdate !== undefined) user.birthdate = dto.birthdate;
+      if (dto.heightCm !== undefined) user.heightCm = dto.heightCm;
+      if (dto.languagesSpoken !== undefined)
+        user.languagesSpoken = dto.languagesSpoken;
+      if (dto.latitude !== undefined) user.latitude = dto.latitude;
+      if (dto.longitude !== undefined) user.longitude = dto.longitude;
+      if (dto.city !== undefined) user.city = dto.city;
+      if (dto.country !== undefined) user.country = dto.country;
+      if (dto.isActive !== undefined) user.isActive = dto.isActive;
+      if (dto.preferences !== undefined) user.preferences = dto.preferences;
 
-        const sensitiveProfile = await sensitiveProfilesRepo
-          .createQueryBuilder("profile")
-          .addSelect([
-            "profile.relationshipTypesSought",
-            "profile.sexualInterests",
-            "profile.fantasiesText",
-            "profile.hasChildren",
-            "profile.wantsChildren",
-            "profile.relationshipTypesSoughtVisibility",
-            "profile.sexualInterestsVisibility",
-            "profile.fantasiesTextVisibility",
-            "profile.hasChildrenVisibility",
-            "profile.wantsChildrenVisibility",
-          ])
-          .where("profile.userId = :id", { id })
-          .getOne();
+      const sensitiveProfile = await sensitiveProfilesRepo
+        .createQueryBuilder("profile")
+        .addSelect([
+          "profile.relationshipTypesSought",
+          "profile.sexualInterests",
+          "profile.fantasiesText",
+          "profile.hasChildren",
+          "profile.wantsChildren",
+          "profile.relationshipTypesSoughtVisibility",
+          "profile.sexualInterestsVisibility",
+          "profile.fantasiesTextVisibility",
+          "profile.hasChildrenVisibility",
+          "profile.wantsChildrenVisibility",
+        ])
+        .where("profile.userId = :id", { id })
+        .getOne();
 
-        const profile =
-          sensitiveProfile ??
-          sensitiveProfilesRepo.create({
-            userId: id,
-          });
+      const profile =
+        sensitiveProfile ??
+        sensitiveProfilesRepo.create({
+          userId: id,
+        });
 
-        if (dto.relationshipTypesSought !== undefined)
-          profile.relationshipTypesSought = dto.relationshipTypesSought;
-        if (dto.sexualInterests !== undefined)
-          profile.sexualInterests = dto.sexualInterests;
-        if (dto.fantasiesText !== undefined)
-          profile.fantasiesText = dto.fantasiesText;
-        if (dto.hasChildren !== undefined)
-          profile.hasChildren = dto.hasChildren;
-        if (dto.wantsChildren !== undefined)
-          profile.wantsChildren = dto.wantsChildren;
-        if (dto.relationshipTypesSoughtVisibility !== undefined)
-          profile.relationshipTypesSoughtVisibility =
-            dto.relationshipTypesSoughtVisibility;
-        if (dto.sexualInterestsVisibility !== undefined)
-          profile.sexualInterestsVisibility = dto.sexualInterestsVisibility;
-        if (dto.fantasiesTextVisibility !== undefined)
-          profile.fantasiesTextVisibility = dto.fantasiesTextVisibility;
-        if (dto.hasChildrenVisibility !== undefined)
-          profile.hasChildrenVisibility = dto.hasChildrenVisibility;
-        if (dto.wantsChildrenVisibility !== undefined)
-          profile.wantsChildrenVisibility = dto.wantsChildrenVisibility;
+      if (dto.relationshipTypesSought !== undefined)
+        profile.relationshipTypesSought = dto.relationshipTypesSought;
+      if (dto.sexualInterests !== undefined)
+        profile.sexualInterests = dto.sexualInterests;
+      if (dto.fantasiesText !== undefined)
+        profile.fantasiesText = dto.fantasiesText;
+      if (dto.hasChildren !== undefined) profile.hasChildren = dto.hasChildren;
+      if (dto.wantsChildren !== undefined)
+        profile.wantsChildren = dto.wantsChildren;
+      if (dto.relationshipTypesSoughtVisibility !== undefined)
+        profile.relationshipTypesSoughtVisibility =
+          dto.relationshipTypesSoughtVisibility;
+      if (dto.sexualInterestsVisibility !== undefined)
+        profile.sexualInterestsVisibility = dto.sexualInterestsVisibility;
+      if (dto.fantasiesTextVisibility !== undefined)
+        profile.fantasiesTextVisibility = dto.fantasiesTextVisibility;
+      if (dto.hasChildrenVisibility !== undefined)
+        profile.hasChildrenVisibility = dto.hasChildrenVisibility;
+      if (dto.wantsChildrenVisibility !== undefined)
+        profile.wantsChildrenVisibility = dto.wantsChildrenVisibility;
 
-        await sensitiveProfilesRepo.save(profile);
+      await sensitiveProfilesRepo.save(profile);
 
-        return usersRepo.save(user);
-      },
-    );
+      await usersRepo.save(user);
+    });
 
     if (
       dto.relationshipTypesSought !== undefined ||
@@ -481,7 +499,6 @@ export class UsersService implements OnModuleInit {
       );
     }
     this.logger.log(`Updated profile for user ${id}`);
-    return toPublicUserResponse(updatedUser);
   }
 
   async findById(
@@ -522,6 +539,23 @@ export class UsersService implements OnModuleInit {
         currentUserLon,
       ),
     );
+  }
+
+  async findByIds(
+    userIds: string[],
+  ): Promise<Array<Pick<User, "id" | "username" | "photos">>> {
+    if (userIds.length === 0) return [];
+
+    const users = await this.usersRepo.find({
+      where: { id: In(userIds) },
+      select: ["id", "username", "photos"],
+    });
+
+    return users.map(({ id, username, photos }) => ({
+      id,
+      username,
+      photos: photos?.slice(0, 1) ?? [],
+    }));
   }
 
   async findByUsername(

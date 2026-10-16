@@ -240,4 +240,22 @@ describe("LikesService", () => {
       });
     });
   });
+
+  describe("hasLiked", () => {
+    it("returns true when the sender has liked the receiver", async () => {
+      likeRepo.countBy.mockResolvedValue(1);
+
+      await expect(service.hasLiked(SENDER_ID, RECEIVER_ID)).resolves.toEqual({
+        liked: true,
+      });
+    });
+
+    it("returns false when there is no like", async () => {
+      likeRepo.countBy.mockResolvedValue(0);
+
+      await expect(service.hasLiked(SENDER_ID, RECEIVER_ID)).resolves.toEqual({
+        liked: false,
+      });
+    });
+  });
 });
