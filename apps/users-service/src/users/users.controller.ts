@@ -18,6 +18,7 @@ import { UsersService } from "./users.service";
 import {
   CreateUserDto,
   DiscoverQueryDto,
+  UpdateLocationDto,
   UpdateProfileDto,
 } from "./dto/user.dto";
 import {
@@ -102,16 +103,27 @@ export class UsersController {
     return this.usersService.addPhoto(user.id, body.imageUrl);
   }
 
+  @Put("me/location")
+  @ApiOperation({ summary: "Update your location from coordinates" })
+  updateMyLocation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateLocationDto,
+  ): Promise<{ city?: string; country?: string }> {
+    return this.usersService.updateLocation(user.id, dto);
+  }
+
   @Put("me")
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Update your own profile" })
   async updateMyProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateProfileDto,
   ) {
-    return this.usersService.updateProfile(dto, user.id, user.id);
+    await this.usersService.updateProfile(dto, user.id, user.id);
   }
 
   @Put(":id/update")
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Update a profile (self or admin only)" })
   async updateProfile(
     @CurrentUser() user: AuthenticatedUser,
@@ -119,7 +131,7 @@ export class UsersController {
     @Param("id") id: string,
   ) {
     this.assertSelfOrAdmin(user, id);
-    return this.usersService.updateProfile(dto, id, user.id);
+    await this.usersService.updateProfile(dto, id, user.id);
   }
 
   @Get(":id")

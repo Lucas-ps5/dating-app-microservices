@@ -359,6 +359,36 @@ components:
         wantsChildrenVisibility:
           $ref: "#/components/schemas/ProfileVisibility"
 
+    UpdateLocationRequest:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          example: 37.7749
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          example: -122.4194
+
+    UpdateLocationResponse:
+      type: object
+      description: City and country resolved from the submitted coordinates. Properties may be omitted if reverse geocoding is unavailable.
+      properties:
+        city:
+          type: string
+          nullable: true
+          example: San Francisco
+        country:
+          type: string
+          nullable: true
+          example: United States
+
     UsersListResponse:
       type: object
       properties:
@@ -503,7 +533,7 @@ paths:
       parameters:
         - name: currentUserId
           in: query
-          required: true
+          required: false
           schema:
             type: string
             format: uuid
@@ -648,6 +678,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /me/location:
+    put:
+      tags: [users]
+      summary: Update the current user's location
+      description: |
+        Saves the submitted coordinates and resolves their city and country using reverse geocoding.
+        Geocoding is best-effort; coordinates are saved even when no location name can be resolved.
+        Caller identity is forwarded by the api-gateway via the `x-user-id` header.
+      operationId: updateMyLocation
+      parameters:
+        - name: x-user-id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Keycloak subject (sub) of the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLocationRequest"
+      responses:
+        "200":
+          description: Coordinates saved; resolved city and country returned when available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateLocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 

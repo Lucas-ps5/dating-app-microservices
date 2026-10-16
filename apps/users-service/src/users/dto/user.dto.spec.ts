@@ -3,6 +3,7 @@ import { validate } from "class-validator";
 import {
   CreateUserDto,
   PublicUserResponseDto,
+  UpdateLocationDto,
   UpdateProfileDto,
 } from "./user.dto";
 import { RelationshipType } from "../user-profile.enums";
@@ -52,6 +53,26 @@ describe("user profile DTOs", () => {
     expect(await validate(adult)).toHaveLength(0);
     expect((await validate(underage)).map((error) => error.property)).toContain(
       "birthdate",
+    );
+  });
+
+  it("requires valid geographic coordinates for location updates", async () => {
+    const valid = plainToInstance(UpdateLocationDto, {
+      latitude: "0",
+      longitude: "0",
+    });
+    const invalid = plainToInstance(UpdateLocationDto, {
+      latitude: 91,
+      longitude: -181,
+    });
+    const missing = plainToInstance(UpdateLocationDto, {});
+
+    expect(await validate(valid)).toHaveLength(0);
+    expect((await validate(invalid)).map((error) => error.property)).toEqual(
+      expect.arrayContaining(["latitude", "longitude"]),
+    );
+    expect((await validate(missing)).map((error) => error.property)).toEqual(
+      expect.arrayContaining(["latitude", "longitude"]),
     );
   });
 
