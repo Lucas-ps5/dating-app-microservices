@@ -1,11 +1,14 @@
 import { NestFactory } from "@nestjs/core";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { httpLoggingMiddleware } from "@app/common";
 import { MatchesAppModule } from "./app.module";
 
 async function bootstrap() {
   const logger = new Logger("MatchesService");
   const app = await NestFactory.create(MatchesAppModule);
+  app.use(httpLoggingMiddleware);
+
   const configService = app.get(ConfigService);
 
   app.useGlobalPipes(

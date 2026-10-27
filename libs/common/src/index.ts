@@ -20,3 +20,6 @@ export * from "./types/types";
 
 // Utils
 export * from "./utils/utils";
+
+// Middleware
+export * from "./middleware/http-logging.middleware";

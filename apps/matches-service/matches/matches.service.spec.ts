@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { MatchesService } from "./matches.service";
 import { Match } from "./entities/match.entity";
+import { Like } from "../likes/entities/like.entity";
 import { KafkaProducerService } from "../src/kafka/kafka-producer.service";
 import { KAFKA_TOPICS } from "@app/common";
 
@@ -23,6 +24,7 @@ describe("MatchesService", () => {
     findAndCount: jest.Mock;
     count: jest.Mock;
   };
+  let likeRepo: { delete: jest.Mock };
   let kafkaProducer: { emit: jest.Mock };
 
   beforeEach(async () => {
@@ -34,12 +36,14 @@ describe("MatchesService", () => {
       findAndCount: jest.fn(),
       count: jest.fn(),
     };
+    likeRepo = { delete: jest.fn() };
     kafkaProducer = { emit: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MatchesService,
         { provide: getRepositoryToken(Match), useValue: matchRepo },
+        { provide: getRepositoryToken(Like), useValue: likeRepo },
         { provide: KafkaProducerService, useValue: kafkaProducer },
       ],
     }).compile();
@@ -75,6 +79,14 @@ describe("MatchesService", () => {
           matchedAt: "2026-01-01T00:00:00.000Z",
         },
       );
+      expect(likeRepo.delete).toHaveBeenNthCalledWith(1, {
+        senderId: USER_A,
+        receiverId: USER_B,
+      });
+      expect(likeRepo.delete).toHaveBeenNthCalledWith(2, {
+        senderId: USER_B,
+        receiverId: USER_A,
+      });
       expect(result).toEqual({ newId: "match-1" });
     });
 
@@ -84,6 +96,14 @@ describe("MatchesService", () => {
       await expect(service.createMatch(USER_A, USER_B)).rejects.toBeInstanceOf(
         ConflictException,
       );
+      expect(likeRepo.delete).toHaveBeenNthCalledWith(1, {
+        senderId: USER_A,
+        receiverId: USER_B,
+      });
+      expect(likeRepo.delete).toHaveBeenNthCalledWith(2, {
+        senderId: USER_B,
+        receiverId: USER_A,
+      });
       expect(matchRepo.save).not.toHaveBeenCalled();
     });
   });

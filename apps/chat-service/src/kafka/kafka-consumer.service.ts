@@ -99,7 +99,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.matchesService.recordMatchFromEvent(user1Id, user2Id, matchId);
-    await this.conversationsService.ensureConversationExists(user1Id, user2Id);
+    //await this.conversationsService.ensureConversationExists(user1Id, user2Id);
 
     this.logger.log(`Match ${matchId} projected into chat-service`);
   }

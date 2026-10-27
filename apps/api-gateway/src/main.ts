@@ -2,10 +2,12 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { httpLoggingMiddleware } from "@app/common";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(httpLoggingMiddleware);
 
   const configService = app.get(ConfigService);
 

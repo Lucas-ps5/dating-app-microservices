@@ -2,11 +2,13 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { httpLoggingMiddleware } from "@app/common";
 import { MediaAppModule } from "./app.module";
 
 async function bootstrap() {
   const logger = new Logger("MediaService");
   const app = await NestFactory.create(MediaAppModule);
+  app.use(httpLoggingMiddleware);
 
   const configService = app.get(ConfigService);
 
@@ -15,7 +17,9 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle("HMeet Media Service")
-    .setDescription("Image upload, retrieval & deletion via S3-compatible object storage")
+    .setDescription(
+      "Image upload, retrieval & deletion via S3-compatible object storage",
+    )
     .setVersion("1.0")
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);

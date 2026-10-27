@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { CountResponse, CreationResponse, KAFKA_TOPICS } from "@app/common";
 import { KafkaProducerService } from "../src/kafka/kafka-producer.service";
+import { Like } from "../likes/entities/like.entity";
 import { Match } from "./entities/match.entity";
 
 export interface PaginatedMatches {
@@ -26,6 +27,8 @@ export class MatchesService {
   constructor(
     @InjectRepository(Match)
     private readonly matchRepo: Repository<Match>,
+    @InjectRepository(Like)
+    private readonly likeRepo: Repository<Like>,
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
@@ -40,11 +43,14 @@ export class MatchesService {
     });
 
     if (existing) {
+      await this.deleteMutualLikes(uid1, uid2);
       throw new ConflictException("Match already exists");
     }
 
     const match = this.matchRepo.create({ user1Id: uid1, user2Id: uid2 });
     const savedMatch = await this.matchRepo.save(match);
+
+    await this.deleteMutualLikes(uid1, uid2);
 
     await this.kafkaProducer.emit(KAFKA_TOPICS.MATCH_CREATED, {
       matchId: savedMatch.id,
@@ -57,6 +63,14 @@ export class MatchesService {
       `Created match ${savedMatch.id} between ${uid1} and ${uid2}`,
     );
     return { newId: savedMatch.id };
+  }
+
+  private async deleteMutualLikes(
+    user1Id: string,
+    user2Id: string,
+  ): Promise<void> {
+    await this.likeRepo.delete({ senderId: user1Id, receiverId: user2Id });
+    await this.likeRepo.delete({ senderId: user2Id, receiverId: user1Id });
   }
 
   async removeMatch(userId?: string, receiverId?: string): Promise<void> {

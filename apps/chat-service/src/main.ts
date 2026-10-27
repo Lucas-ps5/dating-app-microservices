@@ -1,11 +1,13 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { httpLoggingMiddleware } from "@app/common";
 import { ChatAppModule } from "./app.module";
 
 async function bootstrap() {
   const logger = new Logger("ChatService");
   const app = await NestFactory.create(ChatAppModule);
+  app.use(httpLoggingMiddleware);
 
   const configService = app.get(ConfigService);
 
