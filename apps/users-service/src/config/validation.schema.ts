@@ -14,6 +14,10 @@ export const validationSchema = Joi.object({
   SENSITIVE_PROFILE_ENCRYPTION_KEY: Joi.string().base64().length(44).optional(),
   KAFKA_BROKERS: Joi.string().default("localhost:29092"),
   KAFKA_GROUP_ID: Joi.string().default("users-service"),
+  REDIS_HOST: Joi.string().default("localhost"),
+  REDIS_PORT: Joi.number().default(6379),
+  REDIS_PASSWORD: Joi.string().allow("").optional(),
+  REDIS_PRESENCE_TTL_SECONDS: Joi.number().min(30).default(600),
   UPLOAD_DEST: Joi.string().default("./uploads"),
   // Keycloak Admin API (used to provision accounts during registration)
   KEYCLOAK_URL: Joi.string().uri().default("http://localhost:8080"),

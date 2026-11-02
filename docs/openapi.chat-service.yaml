@@ -112,6 +112,10 @@ components:
       type: object
       description: A match enriched with the latest message
       properties:
+        id:
+          type: string
+          format: uuid
+          example: "b1c2d3e4-0002-4a1b-c234-000000000002"
         user1Id:
           type: string
           format: uuid
@@ -139,6 +143,12 @@ components:
           type: string
           format: date-time
           example: "2025-07-01T08:00:00Z"
+        unreadCountUser1:
+          type: integer
+          example: 0
+        unreadCountUser2:
+          type: integer
+          example: 0
 
     CreateMatchRequest:
       type: object
@@ -180,6 +190,15 @@ components:
                 type: string
         error:
           type: string
+
+    CountResponse:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          description: Total count
+          example: 14
 
   responses:
     BadRequest:

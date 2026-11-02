@@ -1,6 +1,7 @@
 // Kafka Topic constants
 export const KAFKA_TOPICS = {
   USER_DELETED: "user.deleted",
+  PROFILE_VISITED: "profile.visited",
   LIKE_CREATED: "like.created",
   MATCH_CREATED: "match.created",
   MESSAGE_SENT: "message.sent",
@@ -13,6 +14,12 @@ export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
 // Event payload interfaces
 export interface UserDeletedEvent {
   keycloakId: string;
+}
+
+export interface ProfileVisitedEvent {
+  visitorId: string;
+  profileOwnerId: string;
+  visitedAt: string;
 }
 
 export interface LikeCreatedEvent {

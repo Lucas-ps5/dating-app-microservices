@@ -14,5 +14,11 @@ export default () => ({
     brokers: (process.env.KAFKA_BROKERS || "localhost:29092").split(","),
     groupId: process.env.KAFKA_GROUP_ID || "users-service",
   },
+  redis: {
+    host: process.env.REDIS_HOST || "localhost",
+    port: parseInt(process.env.REDIS_PORT || "6379", 10),
+    password: process.env.REDIS_PASSWORD || undefined,
+    presenceTtlSeconds: parseInt(process.env.REDIS_PRESENCE_TTL_SECONDS || "600", 10),
+  },
   ...keycloakConfiguration(),
 });

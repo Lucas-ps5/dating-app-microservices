@@ -414,6 +414,12 @@ export class PublicUserResponseDto {
 
   @Expose()
   updatedAt?: string;
+
+  @Expose()
+  isOnline?: boolean;
+
+  @Expose()
+  lastOnlineAt?: string;
 }
 
 export class DiscoverQueryDto {

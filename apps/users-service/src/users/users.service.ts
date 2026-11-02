@@ -24,11 +24,13 @@ import {
   CreationResponse,
   FieldToExtractCodes,
   KAFKA_TOPICS,
+  ProfileVisitedEvent,
   UserDeletedEvent,
   calculateDistance,
 } from "@app/common";
 import KcAdminClient from "@keycloak/keycloak-admin-client";
 import { UserWithDistance } from "./interfaces/user-with-distance.interface";
+import { PresenceService, PresenceState } from "./presence.service";
 
 export interface PaginatedUsers {
   data: PublicUserResponseDto[];
@@ -169,6 +171,7 @@ export class UsersService implements OnModuleInit {
     private readonly sensitiveProfilesRepo: Repository<UserSensitiveProfile>,
     private readonly kafkaProducer: KafkaProducerService,
     private readonly configService: ConfigService,
+    private readonly presenceService: PresenceService,
   ) {
     this.kcAdminClient = new KcAdminClient({
       baseUrl:
@@ -380,6 +383,36 @@ export class UsersService implements OnModuleInit {
     }
   }
 
+  async heartbeat(userId: string): Promise<PresenceState> {
+    return this.presenceService.heartbeat(userId);
+  }
+
+  async markOffline(userId: string): Promise<PresenceState> {
+    return this.presenceService.markOffline(userId);
+  }
+
+  private async withPresence<T extends { id?: string }>(value: T): Promise<T> {
+    if (!value.id) return value;
+    const presence = await this.presenceService.get(value.id);
+    return Object.assign(value, presence);
+  }
+
+  private async emitProfileVisit(
+    visitorId: string | undefined,
+    profileOwnerId: string,
+  ): Promise<void> {
+    if (!visitorId || visitorId === profileOwnerId) return;
+
+    await this.kafkaProducer.emit<ProfileVisitedEvent>(
+      KAFKA_TOPICS.PROFILE_VISITED,
+      {
+        visitorId,
+        profileOwnerId,
+        visitedAt: new Date().toISOString(),
+      },
+    );
+  }
+
   async updateLocation(
     id: string,
     dto: UpdateLocationDto,
@@ -506,6 +539,7 @@ export class UsersService implements OnModuleInit {
     fieldToExtractCodes?: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
+    visitorId?: string,
   ): Promise<PublicUserResponseDto> {
     const user = await this.usersRepo.findOne({
       where: { id },
@@ -526,24 +560,28 @@ export class UsersService implements OnModuleInit {
       ],
     });
 
-    return toPublicUserResponse(
-      withDistance(
-        {
-          ...user,
-          relationshipTypesSought: sensitiveProfile?.relationshipTypesSought,
-          sexualInterests: sensitiveProfile?.sexualInterests,
-          hasChildren: sensitiveProfile?.hasChildren,
-          wantsChildren: sensitiveProfile?.wantsChildren,
-        } as PublicProfileData,
-        currentUserLat,
-        currentUserLon,
+    const profile = await this.withPresence(
+      toPublicUserResponse(
+        withDistance(
+          {
+            ...user,
+            relationshipTypesSought: sensitiveProfile?.relationshipTypesSought,
+            sexualInterests: sensitiveProfile?.sexualInterests,
+            hasChildren: sensitiveProfile?.hasChildren,
+            wantsChildren: sensitiveProfile?.wantsChildren,
+          } as PublicProfileData,
+          currentUserLat,
+          currentUserLon,
+        ),
       ),
     );
+    await this.emitProfileVisit(visitorId, id);
+    return profile;
   }
 
   async findByIds(
     userIds: string[],
-  ): Promise<Array<Pick<User, "id" | "username" | "photos">>> {
+  ): Promise<Array<Pick<User, "id" | "username" | "photos"> & PresenceState>> {
     if (userIds.length === 0) return [];
 
     const users = await this.usersRepo.find({
@@ -551,10 +589,14 @@ export class UsersService implements OnModuleInit {
       select: ["id", "username", "photos"],
     });
 
+    const presence = await this.presenceService.getMany(
+      users.map((user) => user.id),
+    );
     return users.map(({ id, username, photos }) => ({
       id,
       username,
       photos: photos?.slice(0, 1) ?? [],
+      ...(presence.get(id) ?? { isOnline: false }),
     }));
   }
 
@@ -563,6 +605,7 @@ export class UsersService implements OnModuleInit {
     fieldToExtractCodes?: FieldToExtractCodes,
     currentUserLat?: number,
     currentUserLon?: number,
+    visitorId?: string,
   ): Promise<PublicUserResponseDto> {
     const user = await this.usersRepo.findOne({
       where: { username },
@@ -583,19 +626,23 @@ export class UsersService implements OnModuleInit {
       ],
     });
 
-    return toPublicUserResponse(
-      withDistance(
-        {
-          ...user,
-          relationshipTypesSought: sensitiveProfile?.relationshipTypesSought,
-          sexualInterests: sensitiveProfile?.sexualInterests,
-          hasChildren: sensitiveProfile?.hasChildren,
-          wantsChildren: sensitiveProfile?.wantsChildren,
-        } as PublicProfileData,
-        currentUserLat,
-        currentUserLon,
+    const profile = await this.withPresence(
+      toPublicUserResponse(
+        withDistance(
+          {
+            ...user,
+            relationshipTypesSought: sensitiveProfile?.relationshipTypesSought,
+            sexualInterests: sensitiveProfile?.sexualInterests,
+            hasChildren: sensitiveProfile?.hasChildren,
+            wantsChildren: sensitiveProfile?.wantsChildren,
+          } as PublicProfileData,
+          currentUserLat,
+          currentUserLon,
+        ),
       ),
     );
+    await this.emitProfileVisit(visitorId, user.id);
+    return profile;
   }
 
   /**
@@ -614,7 +661,9 @@ export class UsersService implements OnModuleInit {
   async addPhoto(id: string, filename: string): Promise<PublicUserResponseDto> {
     const user = await this.findFullById(id);
     user.photos = [...(user.photos ?? []), filename];
-    return toPublicUserResponse(await this.usersRepo.save(user));
+    return this.withPresence(
+      toPublicUserResponse(await this.usersRepo.save(user)),
+    );
   }
 
   async discover(
@@ -686,12 +735,19 @@ export class UsersService implements OnModuleInit {
 
     const totalPages = Math.ceil(total / sanitizedLimit);
 
+    const presence = await this.presenceService.getMany(
+      data.map((user) => user.id),
+    );
     return {
-      data: data.map((user) =>
-        toPublicUserResponse(
+      data: data.map((user) => {
+        const response = toPublicUserResponse(
           withDistance(user, query.currentUserLat, query.currentUserLon),
-        ),
-      ),
+        );
+        return Object.assign(
+          response,
+          presence.get(user.id) ?? { isOnline: false },
+        );
+      }),
       total,
       page: sanitizedPage,
       limit: sanitizedLimit,

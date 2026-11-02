@@ -65,6 +65,20 @@ export class UsersController {
     return this.usersService.findById(user.id, fieldToExtractCodes);
   }
 
+  @Post("me/heartbeat")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Update the current user's online presence" })
+  async heartbeat(@CurrentUser() user: AuthenticatedUser) {
+    return this.usersService.heartbeat(user.id);
+  }
+
+  @Post("me/offline")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Mark the current user as offline" })
+  async markOffline(@CurrentUser() user: AuthenticatedUser) {
+    return this.usersService.markOffline(user.id);
+  }
+
   @Get("discover")
   @ApiOperation({ summary: "Discover potential matches" })
   async discover(
@@ -83,6 +97,7 @@ export class UsersController {
   @Get("by-username/:username")
   @ApiOperation({ summary: "Get user profile by username" })
   async getUserByUsername(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param("username") username: string,
     @Query("fieldToExtractCodes") fieldToExtractCodes: FieldToExtractCodes,
     @Query("currentUserLat") currentUserLat?: number,
@@ -93,6 +108,7 @@ export class UsersController {
       fieldToExtractCodes,
       currentUserLat,
       currentUserLon,
+      currentUser.id,
     );
   }
 
@@ -144,6 +160,7 @@ export class UsersController {
   @Get(":id")
   @ApiOperation({ summary: "Get profile by internal UUID" })
   async getById(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param("id") id: string,
     @Query("fieldToExtractCodes") fieldToExtractCodes: FieldToExtractCodes,
     @Query("currentUserLat") currentUserLat?: number,
@@ -154,12 +171,14 @@ export class UsersController {
       fieldToExtractCodes,
       currentUserLat,
       currentUserLon,
+      currentUser.id,
     );
   }
 
   @Get(":id/full")
   @ApiOperation({ summary: "Get a user's full public profile" })
   async getByIdFull(
+    @CurrentUser() currentUser: AuthenticatedUser,
     @Param("id") id: string,
     @Query("currentUserLat") currentUserLat?: number,
     @Query("currentUserLon") currentUserLon?: number,
@@ -169,6 +188,7 @@ export class UsersController {
       "Code-1",
       currentUserLat,
       currentUserLon,
+      currentUser.id,
     );
   }
 

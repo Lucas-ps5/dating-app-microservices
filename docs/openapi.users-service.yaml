@@ -221,6 +221,17 @@ components:
         updatedAt:
           type: string
           format: date-time
+        age:
+          type: integer
+          minimum: 18
+          example: 31
+        isOnline:
+          type: boolean
+          example: true
+        lastOnlineAt:
+          type: string
+          format: date-time
+          nullable: true
 
     UserWithDistance:
       allOf:
@@ -232,6 +243,104 @@ components:
               format: float
               description: Distance in kilometers from the current user (if provided)
               example: 12.5
+
+    PresenceState:
+      type: object
+      required: [isOnline]
+      properties:
+        isOnline:
+          type: boolean
+          example: true
+        lastOnlineAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-10-29T15:30:00.000Z"
+
+    PublicUser:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        title:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        age:
+          type: integer
+          minimum: 18
+          example: 31
+        birthdate:
+          type: string
+          format: date
+          nullable: true
+        gender:
+          $ref: "#/components/schemas/Gender"
+        heightCm:
+          type: integer
+          nullable: true
+        languagesSpoken:
+          type: array
+          items:
+            type: string
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+        relationshipTypesSought:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelationshipType"
+        sexualInterests:
+          type: array
+          items:
+            $ref: "#/components/schemas/SexualInterest"
+        hasChildren:
+          $ref: "#/components/schemas/HasChildren"
+        wantsChildren:
+          $ref: "#/components/schemas/WantsChildren"
+        photos:
+          type: array
+          items:
+            type: string
+            format: uri
+        city:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        distance:
+          type: number
+          format: float
+          description: Distance in kilometers from the current user (if provided)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isOnline:
+          type: boolean
+        lastOnlineAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PublicUserWithDistance:
+      allOf:
+        - $ref: "#/components/schemas/PublicUser"
+        - type: object
+          properties:
+            distance:
+              type: number
+              format: float
+              nullable: true
+              description: Distance in kilometers from the current user (if provided)
 
     CreateUserRequest:
       type: object
@@ -395,7 +504,7 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/UserWithDistance"
+            $ref: "#/components/schemas/PublicUserWithDistance"
         total:
           type: integer
           example: 120
@@ -415,7 +524,7 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/UserWithDistance"
+            $ref: "#/components/schemas/PublicUserWithDistance"
         total:
           type: integer
           example: 120
@@ -460,6 +569,22 @@ components:
             type: string
             format: uri
           example: ["http://localhost:9000/hmeet-media/users/abc123/avatar.jpg"]
+        isOnline:
+          type: boolean
+          example: true
+        lastOnlineAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AddPhotoUrlRequest:
+      type: object
+      required: [imageUrl]
+      properties:
+        imageUrl:
+          type: string
+          format: uri
+          example: "http://localhost:9000/hmeet-media/users/abc123/avatar.jpg"
 
     ErrorResponse:
       type: object
@@ -547,12 +672,8 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateUserRequest"
       responses:
-        "200":
-          description: Updated profile
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
+        "204":
+          description: Profile updated
         "400":
           $ref: "#/components/responses/BadRequest"
 
@@ -563,13 +684,6 @@ paths:
       description: Returns a paginated list of active users excluding the caller and already-matched users.
       operationId: discoverUsers
       parameters:
-        - name: currentUserId
-          in: query
-          required: false
-          schema:
-            type: string
-            format: uuid
-          description: Injected by the api-gateway from the JWT
         - name: gender
           in: query
           schema:
@@ -597,7 +711,7 @@ paths:
             maximum: 100
         - name: currentUserLat
           in: query
-          required: true
+          required: false
           schema:
             type: number
             format: double
@@ -606,7 +720,7 @@ paths:
           description: Current user's latitude (obtained via geolocation on login)
         - name: currentUserLon
           in: query
-          required: true
+          required: false
           schema:
             type: number
             format: double
@@ -679,7 +793,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserWithDistance"
+                $ref: "#/components/schemas/PublicUserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [users]
+      summary: Soft-delete a user
+      description: A user may delete their own profile; admins may delete any profile.
+      operationId: softDeleteUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: User soft-deleted
+        "403":
+          description: Caller cannot delete the requested user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -711,7 +849,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserWithDistance"
+                $ref: "#/components/schemas/PublicUserWithDistance"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -733,7 +871,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserWithDistance"
+                $ref: "#/components/schemas/PublicUserWithDistance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags: [users]
+      summary: Update the current user's profile
+      operationId: updateMyProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "204":
+          description: Profile updated
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -772,31 +928,31 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /me/full:
-    get:
+  /me/heartbeat:
+    post:
       tags: [users]
-      summary: Get the current user's full public profile
-      operationId: getCurrentUserFullProfile
-      parameters:
-        - name: currentUserLat
-          in: query
-          schema:
-            type: number
-            format: double
-        - name: currentUserLon
-          in: query
-          schema:
-            type: number
-            format: double
+      summary: Update the current user's online presence
+      operationId: heartbeatCurrentUser
       responses:
         "200":
-          description: Full public user profile
+          description: Current presence state
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserWithDistance"
-        "404":
-          $ref: "#/components/responses/NotFound"
+                $ref: "#/components/schemas/PresenceState"
+
+  /me/offline:
+    post:
+      tags: [users]
+      summary: Mark the current user as offline
+      operationId: markCurrentUserOffline
+      responses:
+        "200":
+          description: Current presence state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresenceState"
 
   /by-username/{username}:
     get:
@@ -831,28 +987,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserWithDistance"
+                $ref: "#/components/schemas/PublicUserWithDistance"
         "404":
           $ref: "#/components/responses/NotFound"
 
-    delete:
-      tags: [users]
-      summary: Soft-delete a user
-      operationId: softDeleteUser
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "204":
-          description: User soft-deleted
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /by-keycloak/{keycloakId}/photos:
+  /me/photos:
     post:
       tags: [users]
       summary: Link a photo URL to a user profile
@@ -860,33 +999,19 @@ paths:
         Called by the api-gateway after a successful upload to media-service.
         Appends the returned `imageUrl` to the user's `photos` array.
       operationId: addPhotoUrl
-      parameters:
-        - name: keycloakId
-          in: path
-          required: true
-          description: Keycloak subject (sub) of the user
-          schema:
-            type: string
-            format: uuid
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [imageUrl]
-              properties:
-                imageUrl:
-                  type: string
-                  format: uri
-                  example: "http://localhost:9000/hmeet-media/users/abc123/avatar.jpg"
+              $ref: "#/components/schemas/AddPhotoUrlRequest"
       responses:
         "201":
           description: Photo linked to profile
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/PublicUserWithDistance"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":

@@ -5,6 +5,7 @@ import { UserSensitiveProfile } from "./user-sensitive-profile.entity";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
 import { KafkaModule } from "../kafka/kafka.module";
+import { PresenceService } from "./presence.service";
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { KafkaModule } from "../kafka/kafka.module";
     KafkaModule,
   ],
   controllers: [UsersController],
-  providers: [UsersService],
-  exports: [UsersService],
+  providers: [UsersService, PresenceService],
+  exports: [UsersService, PresenceService],
 })
 export class UsersModule {}
