@@ -113,6 +113,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Postgres for Notifications Service ──────────────────────────────────────
+  notifications-db:
+    image: postgres:16-alpine
+    container_name: hmeet-notifications-db
+    environment:
+      POSTGRES_DB: hmeet_notifications
+      POSTGRES_USER: hmeet_notifications
+      POSTGRES_PASSWORD: hmeet_notifications_password
+    ports:
+      - "5437:5432"
+    volumes:
+      - notifications_db_data:/var/lib/postgresql/data
+    networks:
+      - hmeet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmeet_notifications"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─── Keycloak ─────────────────────────────────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.1
@@ -253,6 +273,8 @@ volumes:
   matches_db_data:
     driver: local
   media_db_data:
+    driver: local
+  notifications_db_data:
     driver: local
   object_storage_data:
     driver: local

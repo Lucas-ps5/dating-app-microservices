@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "build:all": "nest build api-gateway && nest build users-service && nest build chat-service && nest build matches-service && nest build media-service",
+    "build:all": "nest build api-gateway && nest build users-service && nest build chat-service && nest build matches-service && nest build media-service && nest build notifications-service",
     "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "start": "nest start api-gateway",
     "start:dev": "nest start api-gateway --watch",
@@ -25,6 +25,9 @@
     "start:media": "nest start media-service",
     "start:media:dev": "nest start media-service --watch",
     "start:media:prod": "node dist/apps/media-service/src/main",
+    "start:notifications": "nest start notifications-service",
+    "start:notifications:dev": "nest start notifications-service --watch",
+    "start:notifications:prod": "node dist/apps/notifications-service/src/main",
     "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
     "prettier": "prettier --write \"{apps,libs}/**/*.ts\"",
     "test": "jest",

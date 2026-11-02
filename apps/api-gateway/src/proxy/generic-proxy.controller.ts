@@ -69,6 +69,12 @@ export class GenericProxyController {
           "http://localhost:3004/api",
         targetPrefix: "likes",
       },
+      notifications: {
+        url:
+          configService.get<string>("services.notificationsUrl") ??
+          "http://localhost:3005/api",
+        targetPrefix: "notifications",
+      },
     };
   }
 
@@ -121,6 +127,16 @@ export class GenericProxyController {
 
   @All("likes/*path")
   forwardLikes(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
+  @All("notifications")
+  forwardNotificationsRoot(@Req() request: Request, @Res() response: Response) {
+    return this.forward(request, response);
+  }
+
+  @All("notifications/*path")
+  forwardNotifications(@Req() request: Request, @Res() response: Response) {
     return this.forward(request, response);
   }
 

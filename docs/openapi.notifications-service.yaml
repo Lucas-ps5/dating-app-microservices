@@ -1,0 +1,276 @@
+openapi: 3.0.3
+
+info:
+  title: HMeet - Notifications Service
+  description: |
+    Internal HTTP API for user notifications.
+
+    The service persists notifications generated from Kafka events and exposes
+    authenticated endpoints for listing and updating notifications.
+
+    Authentication is performed with a Keycloak bearer token. The authenticated
+    user ID is resolved from the JWT by the service.
+
+    Database: PostgreSQL (`hmeet_notifications`, port 5437 in development)
+
+    Async Kafka events consumed:
+    | Event | Topic | Notification produced |
+    |---|---|---|
+    | `profile.visited` | `profile.visited` | `PROFILE_VISITED` for the profile owner |
+    | `match.created` | `match.created` | One `NEW_MATCH` notification for each matched user |
+    | `user.deleted` | `user.deleted` | Deletes the user's notification records |
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3005/api
+    description: Local development
+  - url: http://notifications-service:3005/api
+    description: Internal Docker network
+
+tags:
+  - name: notifications
+    description: Notification listing and read-state management
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    NotificationType:
+      type: string
+      enum:
+        - PROFILE_VISITED
+        - NEW_MATCH
+
+    ProfileVisitedData:
+      type: object
+      required:
+        - visitedAt
+      properties:
+        visitedAt:
+          type: string
+          format: date-time
+          example: "2026-11-02T15:55:17.157Z"
+
+    NewMatchData:
+      type: object
+      required:
+        - matchId
+        - matchedAt
+      properties:
+        matchId:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        matchedAt:
+          type: string
+          format: date-time
+          example: "2026-11-02T15:55:17.157Z"
+
+    Notification:
+      type: object
+      required:
+        - id
+        - recipientId
+        - actorId
+        - type
+        - data
+        - readAt
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        recipientId:
+          type: string
+          format: uuid
+          description: User who receives the notification
+        actorId:
+          type: string
+          format: uuid
+          description: User associated with the notification action
+        type:
+          $ref: "#/components/schemas/NotificationType"
+        sourceId:
+          type: string
+          nullable: true
+          description: Match ID or another idempotency source for the notification
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/ProfileVisitedData"
+            - $ref: "#/components/schemas/NewMatchData"
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NotificationList:
+      type: array
+      items:
+        $ref: "#/components/schemas/Notification"
+
+    UnreadCountResponse:
+      type: object
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          minimum: 0
+          example: 4
+
+    MarkAllReadResponse:
+      type: object
+      required:
+        - updated
+      properties:
+        updated:
+          type: integer
+          minimum: 0
+          example: 4
+
+    ErrorResponse:
+      type: object
+      required:
+        - statusCode
+        - message
+      properties:
+        statusCode:
+          type: integer
+          example: 404
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+          example: Not Found
+
+  parameters:
+    LimitParam:
+      name: limit
+      in: query
+      description: Maximum number of notifications to return (1-100)
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+      example: 50
+
+    NotificationIdParam:
+      name: id
+      in: path
+      required: true
+      description: Notification UUID
+      schema:
+        type: string
+        format: uuid
+
+security:
+  - bearerAuth: []
+
+paths:
+  /notifications:
+    get:
+      tags:
+        - notifications
+      summary: List current user's notifications
+      description: Returns notifications ordered by creation time, newest first.
+      operationId: listNotifications
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Notifications returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/unread-count:
+    get:
+      tags:
+        - notifications
+      summary: Count unread notifications
+      operationId: getUnreadNotificationCount
+      responses:
+        "200":
+          description: Unread notification count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/{id}/read:
+    patch:
+      tags:
+        - notifications
+      summary: Mark one notification as read
+      description: Only notifications owned by the authenticated user can be marked read.
+      operationId: markNotificationRead
+      parameters:
+        - $ref: "#/components/parameters/NotificationIdParam"
+      responses:
+        "200":
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Notification does not exist or is not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/read-all:
+    patch:
+      tags:
+        - notifications
+      summary: Mark all current user's notifications as read
+      operationId: markAllNotificationsRead
+      responses:
+        "200":
+          description: Unread notifications marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarkAllReadResponse"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
