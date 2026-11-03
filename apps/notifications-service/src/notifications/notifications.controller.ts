@@ -19,7 +19,7 @@ import { NotificationsService } from "./notifications.service";
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
-  @Get()
+  @Get("my")
   @ApiOperation({ summary: "List the current user's notifications" })
   list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.notificationsService.listForUser(
