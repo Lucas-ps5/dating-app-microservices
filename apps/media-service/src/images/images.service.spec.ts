@@ -6,7 +6,9 @@ import { ObjectStorageService } from "../object-storage/object-storage.service";
 import { Image } from "./image.entity";
 import { ImagesService } from "./images.service";
 
-jest.mock("uuid", () => ({ v4: () => "image-id" }));
+jest.mock("uuid", () => ({
+  v4: () => "23f8b04e-7cf7-4583-922e-f5c2290dc925",
+}));
 
 describe("ImagesService.uploadImage", () => {
   let service: ImagesService;
@@ -68,6 +70,13 @@ describe("ImagesService.uploadImage", () => {
     expect(result.objectName).toBe("avatar/avatar.jpg");
     expect(result.url).toBe(
       "http://localhost:3000/api/media/images/avatar/avatar.jpg",
+    );
+    expect(objectStorage.upload).toHaveBeenCalledWith(
+      Buffer.from("image"),
+      "avatar.jpg",
+      "23f8b04e-7cf7-4583-922e-f5c2290dc925",
+      "image/jpeg",
+      "avatar",
     );
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
     expect(manager.save).toHaveBeenCalledWith(

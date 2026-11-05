@@ -56,6 +56,13 @@ export class MessagesService {
     if (senderId === receiverId) {
       throw new BadRequestException("You cannot message yourself");
     }
+    if (type === MessageType.IMAGE || type === MessageType.GIF) {
+      if (!content?.trim()) {
+        throw new BadRequestException(
+          `${type} messages must include a media URL`,
+        );
+      }
+    }
 
     // if (!(await this.matchesService.areMatched(senderId, receiverId))) {
     //   throw new ForbiddenException(

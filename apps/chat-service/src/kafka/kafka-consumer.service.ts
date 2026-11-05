@@ -8,12 +8,21 @@ import { ConfigService } from "@nestjs/config";
 import { Kafka, Consumer, EachMessagePayload } from "kafkajs";
 import {
   errorMessage,
+  ImageDeletedEvent,
   KAFKA_TOPICS,
   MatchCreatedEvent,
   UserDeletedEvent,
 } from "@app/common";
 import { MatchesService } from "../matches/matches.service";
 import { ConversationsService } from "../messages/conversations.service";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import {
+  Message,
+  MessageStatus,
+  MessageType,
+} from "../messages/message.entity";
+import { Conversation } from "../messages/conversation.entity";
 
 @Injectable()
 export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
@@ -26,6 +35,10 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly matchesService: MatchesService,
     private readonly conversationsService: ConversationsService,
+    @InjectRepository(Message)
+    private readonly messageRepo: Repository<Message>,
+    @InjectRepository(Conversation)
+    private readonly conversationRepo: Repository<Conversation>,
   ) {
     const brokers = this.configService.get<string[]>("kafka.brokers") ?? [
       "localhost:29092",
@@ -40,7 +53,11 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.consumer.connect();
       await this.consumer.subscribe({
-        topics: [KAFKA_TOPICS.MATCH_CREATED, KAFKA_TOPICS.USER_DELETED],
+        topics: [
+          KAFKA_TOPICS.MATCH_CREATED,
+          KAFKA_TOPICS.USER_DELETED,
+          KAFKA_TOPICS.IMAGE_DELETED,
+        ],
         fromBeginning: false,
       });
       await this.consumer.run({
@@ -79,6 +96,9 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         case KAFKA_TOPICS.USER_DELETED:
           await this.onUserDeleted(payload as UserDeletedEvent);
           break;
+        case KAFKA_TOPICS.IMAGE_DELETED:
+          await this.onImageDeleted(payload as ImageDeletedEvent);
+          break;
         default:
           this.logger.warn(`No handler for topic: ${topic}`);
       }
@@ -116,6 +136,104 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     const affected = await this.matchesService.deactivateMatchesForUser(userId);
     this.logger.log(
       `Deactivated ${affected} matches for deleted user ${userId}`,
+    );
+  }
+
+  async onImageDeleted(event: ImageDeletedEvent): Promise<void> {
+    if (!event?.ownerId || !event.objectName) {
+      this.logger.warn(
+        `Ignoring malformed image.deleted: ${JSON.stringify(event)}`,
+      );
+      return;
+    }
+
+    const encodedObjectName = event.objectName
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    const candidates = [...new Set([event.objectName, encodedObjectName])];
+
+    const messages = await this.messageRepo.find({
+      where: {
+        senderId: event.ownerId,
+        type: MessageType.IMAGE,
+      },
+    });
+    const matchingMessages = messages.filter((message) =>
+      candidates.some((candidate) =>
+        this.messageMatchesObjectName(message.content, candidate),
+      ),
+    );
+    const matchingIds = matchingMessages.map((message) => message.id);
+
+    if (!matchingIds.length) return;
+
+    await this.messageRepo.delete(matchingIds);
+    await this.refreshDeletedMessageConversations(matchingMessages);
+    this.logger.log(
+      `Removed ${matchingIds.length} chat image message(s) for deleted object ${event.objectName}`,
+    );
+  }
+
+  private async refreshDeletedMessageConversations(
+    messages: Message[],
+  ): Promise<void> {
+    const conversationIds = [
+      ...new Set(messages.map((message) => message.conversationId)),
+    ];
+
+    for (const conversationId of conversationIds) {
+      const conversation = await this.conversationRepo.findOne({
+        where: { id: conversationId },
+      });
+      if (!conversation) continue;
+
+      const latest = await this.messageRepo.findOne({
+        where: { conversationId },
+        order: { sentAt: "DESC" },
+      });
+      conversation.lastMessagePreview =
+        latest?.content.substring(0, 50) ?? null;
+      conversation.lastMessageSentAt = latest?.sentAt ?? null;
+
+      const unreadDeleted = messages.filter(
+        (message) =>
+          message.conversationId === conversationId &&
+          message.status === MessageStatus.UNREAD,
+      );
+      for (const message of unreadDeleted) {
+        if (message.receiverId === conversation.user1Id) {
+          conversation.unreadCountUser1 = Math.max(
+            0,
+            (conversation.unreadCountUser1 ?? 0) - 1,
+          );
+        } else if (message.receiverId === conversation.user2Id) {
+          conversation.unreadCountUser2 = Math.max(
+            0,
+            (conversation.unreadCountUser2 ?? 0) - 1,
+          );
+        }
+      }
+
+      await this.conversationRepo.save(conversation);
+    }
+  }
+
+  private messageMatchesObjectName(
+    content: string,
+    objectName: string,
+  ): boolean {
+    let normalizedContent = content;
+    try {
+      normalizedContent = decodeURIComponent(content);
+    } catch {
+      // Keep the original value when it is not valid URI encoding.
+    }
+
+    return (
+      normalizedContent === objectName ||
+      normalizedContent.endsWith(`/${objectName}`) ||
+      normalizedContent.includes(`/api/media/images/${objectName}`)
     );
   }
 }

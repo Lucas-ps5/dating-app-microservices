@@ -7,7 +7,12 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Consumer, EachMessagePayload, Kafka } from "kafkajs";
-import { errorMessage, ImageUploadedEvent, KAFKA_TOPICS } from "@app/common";
+import {
+  errorMessage,
+  ImageDeletedEvent,
+  ImageUploadedEvent,
+  KAFKA_TOPICS,
+} from "@app/common";
 import { Repository } from "typeorm";
 import { User } from "../users/user.entity";
 
@@ -51,7 +56,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.consumer.connect();
       await this.consumer.subscribe({
-        topics: [KAFKA_TOPICS.IMAGE_UPLOADED],
+        topics: [KAFKA_TOPICS.IMAGE_UPLOADED, KAFKA_TOPICS.IMAGE_DELETED],
         fromBeginning: true,
       });
       await this.consumer.run({
@@ -59,7 +64,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
       });
       this.connected = true;
       this.logger.log(
-        "Kafka consumer connected and listening for image uploads",
+        "Kafka consumer connected and listening for image upload/deletion events",
       );
     } catch (error) {
       this.logger.warn(
@@ -76,25 +81,34 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleMessage({ topic, message }: EachMessagePayload) {
-    if (topic !== KAFKA_TOPICS.IMAGE_UPLOADED) return;
     const value = message.value?.toString();
     if (!value) return;
 
-    let event: ImageUploadedEvent;
+    let event: ImageUploadedEvent | ImageDeletedEvent;
     try {
-      event = JSON.parse(value) as ImageUploadedEvent;
+      event = JSON.parse(value) as ImageUploadedEvent | ImageDeletedEvent;
     } catch {
-      this.logger.warn("Ignoring malformed image.uploaded payload");
+      this.logger.warn(`Ignoring malformed ${topic} payload`);
       return;
     }
 
-    await this.handleImageUploaded(event);
+    if (topic === KAFKA_TOPICS.IMAGE_UPLOADED) {
+      await this.handleImageUploaded(event as ImageUploadedEvent);
+    } else if (topic === KAFKA_TOPICS.IMAGE_DELETED) {
+      await this.handleImageDeleted(event as ImageDeletedEvent);
+    }
   }
 
   async handleImageUploaded(event: ImageUploadedEvent): Promise<void> {
     if (event?.context !== "avatar") return;
     if (!event.ownerId || !event.url || !event.objectName) {
       this.logger.warn(`Ignoring malformed image.uploaded event`);
+      return;
+    }
+    if (!event.objectName.startsWith("avatar/")) {
+      this.logger.warn(
+        `Ignoring mismatched avatar image object ${event.objectName}`,
+      );
       return;
     }
 
@@ -110,5 +124,58 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
 
     user.photos = [...photos, event.url];
     await this.usersRepo.save(user);
+  }
+
+  async handleImageDeleted(event: ImageDeletedEvent): Promise<void> {
+    if (!event?.ownerId || !event.objectName) {
+      this.logger.warn("Ignoring malformed image.deleted event");
+      return;
+    }
+
+    const user = await this.usersRepo.findOne({
+      where: { id: event.ownerId },
+    });
+    if (!user) {
+      throw new Error(`Cannot detach image from missing user ${event.ownerId}`);
+    }
+
+    const photos = user.photos ?? [];
+    const objectNameCandidates = this.getObjectNameCandidates(event.objectName);
+    const filteredPhotos = photos.filter(
+      (photo) =>
+        !objectNameCandidates.some((candidate) =>
+          this.photoMatchesObjectName(photo, candidate),
+        ),
+    );
+
+    if (filteredPhotos.length === photos.length) return;
+
+    user.photos = filteredPhotos;
+    await this.usersRepo.save(user);
+  }
+
+  private getObjectNameCandidates(objectName: string): string[] {
+    const encoded = objectName
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    return [...new Set([objectName, encoded])];
+  }
+
+  private photoMatchesObjectName(photo: string, objectName: string): boolean {
+    if (photo === objectName) return true;
+
+    let normalizedPhoto = photo;
+    try {
+      normalizedPhoto = decodeURIComponent(photo);
+    } catch {
+      // Keep the original value when it is not valid URI encoding.
+    }
+
+    return (
+      normalizedPhoto.endsWith(`/${objectName}`) ||
+      normalizedPhoto.includes(`/api/media/images/${objectName}`) ||
+      normalizedPhoto.endsWith(objectName)
+    );
   }
 }

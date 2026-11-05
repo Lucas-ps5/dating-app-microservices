@@ -93,6 +93,7 @@ components:
           example: "c4d5e6f7-0003-4b2c-d345-000000000003"
         content:
           type: string
+          description: Text content, or the image/GIF URL for media messages
           example: "Hey! How's it going?"
         type:
           $ref: "#/components/schemas/MessageType"
@@ -173,6 +174,7 @@ components:
           description: Target user's ID
         content:
           type: string
+          description: Text content, or the image/GIF URL for media messages
           example: "Hey! How's it going?"
         type:
           $ref: "#/components/schemas/MessageType"

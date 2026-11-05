@@ -30,11 +30,11 @@ export class Conversation {
   // When fetching the user's "inbox" list, you don't want to join the messages
   // table just to find out what the last message was.
   @Column({ type: "text", nullable: true })
-  lastMessagePreview?: string;
+  lastMessagePreview?: string | null;
 
   // Same here: sort the inbox by this column instead of joining messages.
   @Column({ type: "timestamptz", nullable: true })
-  lastMessageSentAt?: Date;
+  lastMessageSentAt?: Date | null;
 
   // The One-to-Many relation
   @OneToMany(() => Message, (message) => message.conversation)
